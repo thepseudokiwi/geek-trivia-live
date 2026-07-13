@@ -1,0 +1,2 @@
+import{describe,expect,it}from'vitest';import{validateImportRows}from'../shared/importValidation.js';
+describe('import validation',()=>{it('rejects invalid rows with spreadsheet row numbers',()=>{const{questions,errors}=validateImportRows([{id:'bad',category:'',difficulty:9,questionText:'',correctAnswer:''}]);expect(questions).toHaveLength(0);expect(errors[0].row).toBe(2);expect(errors[0].issues.join(' ')).toMatch(/category/)});});

@@ -1,0 +1,2 @@
+import{questionSchema}from'./validation.js';import type{Question}from'./types.js';
+export function validateImportRows(rows:unknown[]):{questions:Question[];errors:{row:number;issues:string[]}[]}{const questions:Question[]=[];const errors:{row:number;issues:string[]}[]=[];rows.forEach((row,i)=>{const result=questionSchema.safeParse(row);if(result.success)questions.push(result.data);else errors.push({row:i+2,issues:result.error.issues.map(x=>`${x.path.join('.')}: ${x.message}`)})});return{questions,errors}}

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+data/*.db*
+playwright-report/
+test-results/
+.DS_Store
+.tmp/

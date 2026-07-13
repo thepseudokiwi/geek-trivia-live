@@ -1,0 +1,2 @@
+import { describe,expect,it } from 'vitest'; import { DatabaseSync } from 'node:sqlite'; import fs from 'node:fs';
+describe('question schema',()=>{it('prevents duplicate question IDs',()=>{const db=new DatabaseSync(':memory:');db.exec(fs.readFileSync(new URL('../server/db/migrations/001_initial.sql',import.meta.url),'utf8'));const sql=`INSERT INTO questions(id,category,subcategory,difficulty,point_value,question_text,correct_answer) VALUES('SAME','Cat','Series',1,100,'Q','A')`;db.exec(sql);expect(()=>db.exec(sql)).toThrow(/UNIQUE constraint failed/);db.close()})});

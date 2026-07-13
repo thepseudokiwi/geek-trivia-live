@@ -1,0 +1,3 @@
+import { DatabaseSync } from 'node:sqlite'; import path from 'node:path';
+export const db = new DatabaseSync(process.env.DATABASE_PATH ?? path.resolve('data/geek-trivia.db'));
+export function rowToQuestion(row: any) { return { id: row.id, category: row.category, subcategory: row.subcategory, difficulty: row.difficulty, pointValue: row.difficulty*100, questionText: row.question_text, correctAnswer: row.correct_answer, alternateAnswers: JSON.parse(row.alternate_answers), questionType: row.question_type, mediaPath: row.media_path, hostNotes: row.host_notes, source: row.source, active: Boolean(row.active), usedCount: row.used_count, dateLastUsed: row.date_last_used, episodeLastUsed: row.episode_last_used, createdAt:row.created_at, updatedAt:row.updated_at }; }
