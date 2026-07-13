@@ -3,5 +3,6 @@ dist/
 data/*.db*
 playwright-report/
 test-results/
+*.tsbuildinfo
 .DS_Store
 .tmp/
