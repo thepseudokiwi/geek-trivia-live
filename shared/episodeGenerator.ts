@@ -29,6 +29,7 @@ export function generateEpisode(questions: Question[], options: EpisodeOptions, 
   const categories = viableCategories(eligible);
   if (categories.length < options.categoryCount) throw new EpisodeGenerationError(`Need ${options.categoryCount} complete categories; found ${categories.length}.`);
   const manual = options.manualCategories ?? [];
+  if (new Set(manual).size !== manual.length) throw new EpisodeGenerationError('Manual categories must be unique.');
   const byName = new Map(categories);
   const missing = manual.filter(name => !byName.has(name));
   if (missing.length) throw new EpisodeGenerationError(`Manual categories are not eligible: ${missing.join(', ')}.`);
@@ -58,7 +59,8 @@ export function rerollQuestion(category: EpisodeCategory, difficulty: Difficulty
 }
 
 export function rerollCategory(index: number, board: EpisodeDraft, library: Question[], options: EpisodeOptions, random: RandomSource): EpisodeDraft {
-  const other = board.categories.filter((_,i)=>i!==index); const names=new Set(other.map(c=>c.name)); const usedIds=new Set(other.flatMap(c=>c.questions.map(q=>q.id)));
+  if (!board.categories[index]) throw new EpisodeGenerationError('Category position does not exist.');
+  const other = board.categories.filter((_,i)=>i!==index); const names=new Set(board.categories.map(c=>c.name)); const usedIds=new Set(other.flatMap(c=>c.questions.map(q=>q.id)));
   const viable=shuffle(viableCategories(library.filter(q=>allowed(q,options)&&!names.has(q.category)&&!usedIds.has(q.id))),random);
   if(!viable.length) throw new EpisodeGenerationError('No eligible replacement category with all five difficulty levels.');
   const [name,pool]=viable[0]; const questions=([1,2,3,4,5] as Difficulty[]).map(d=>{const candidates=pool.filter(q=>q.difficulty===d&&!usedIds.has(q.id));if(!candidates.length)throw new EpisodeGenerationError(`No difficulty ${d} replacement for ${name}.`);const q=candidates[Math.floor(random.next()*candidates.length)];usedIds.add(q.id);return{...q,pointValue:xpForDifficulty(d)}});
