@@ -42,8 +42,15 @@ export interface EpisodeOptions {
 
 export interface EpisodeCategory { name: string; questions: Question[] }
 export interface EpisodeDraft { seed: string; categories: EpisodeCategory[] }
+export type EpisodeStatus='draft'|'locked'|'in_progress'|'completed'|'archived';
 export interface EpisodeRecord extends EpisodeDraft {
   id: string; title: string; episodeNumber: string | null; scheduledDate: string | null;
-  status: 'draft'|'locked'|'in_progress'|'completed'; options: EpisodeOptions;
-  createdAt?: string; updatedAt?: string;
+  status: EpisodeStatus; options: EpisodeOptions; sourceEpisodeId?:string|null; finalWinner?:string|null;
+  createdAt?: string; updatedAt?: string; startedAt?:string|null; completedAt?:string|null; archivedAt?:string|null;
 }
+export type EpisodeQuestionState='unopened'|'opened'|'completed'|'skipped';
+export interface EpisodeQuestionGameplay{questionId:string;state:EpisodeQuestionState;openedAt:string|null;completedAt:string|null;outcome:string|null;awardedParticipantId:string|null;awardedPoints:number;notes:string|null}
+export interface Participant{id:string;episodeId:string;displayName:string;color:string|null;score:number;placement:number|null;createdAt:string}
+export interface GameAction{id:string;episodeId:string;actionType:string;createdAt:string;questionId:string|null;participantId:string|null;pointDelta:number;reason:string|null;metadata:Record<string,unknown>}
+export interface EpisodeDetail extends EpisodeRecord{gameplay:EpisodeQuestionGameplay[];participants:Participant[];actions:GameAction[]}
+export interface EpisodeSummary{id:string;title:string;episodeNumber:string|null;scheduledDate:string|null;status:EpisodeStatus;categoryCount:number;questionCount:number;progressCount:number;finalWinner:string|null;createdAt:string;updatedAt:string}

@@ -1,6 +1,6 @@
 # Geek Trivia Live
 
-A local-first React application for maintaining a trivia library and building balanced, reproducible episode boards. Phase 1 deliberately stops before live game operation, audience synchronization, broadcast animation, and D20 presentation.
+A local-first React application for maintaining a trivia library, building balanced episode boards, and managing a persisted host-side episode lifecycle. Phase 2 adds saved episodes, participants, gameplay state, scoring, completion accounting, and read-only review. Audience synchronization, broadcast animation, and D20 presentation remain intentionally deferred.
 
 ## Architecture
 
@@ -32,7 +32,60 @@ npm test
 npm run build
 ```
 
-Tests cover 4×5 and 5×5 board size, uniqueness, difficulty placement, XP mapping, active status, category/franchise exclusions, all recent-use modes, seed determinism, different seeds, isolated question and category rerolls, reroll uniqueness, insufficient inventory, duplicate database IDs, and row-specific import validation.
+Tests cover the Phase 1 generator/library rules plus saved episode listing, editing, duplication, deletion, transitions, participants, score persistence, question state, ties, completion rollback, exactly-once usage accounting, backup compatibility, and browser lifecycle workflows.
+
+## Phase 2 episode lifecycle
+
+| Current status | Allowed action | Next status |
+|---|---|---|
+| Draft | Lock | Locked |
+| Locked | Unlock | Draft |
+| Locked | Start | In progress |
+| In progress | Complete | Completed |
+| Completed | Archive | Archived |
+| Archived | Restore | Completed |
+
+Status changes use dedicated action endpoints; episode status cannot be assigned arbitrarily. Drafts alone can be edited or deleted. Locked episodes preserve their exact board. Completed and archived episodes reopen as read-only reviews.
+
+The Episodes screen supports title search, status filtering, date sorting, progress summaries, duplication, and status-appropriate actions. Hash routes preserve an opened builder, run, or review screen across browser reloads.
+
+### Participants and scoring
+
+- Up to eight participants per episode
+- Participants may be added or renamed before completion
+- Participants with score-ledger references cannot be removed
+- Active-question XP can be awarded or deducted
+- Manual adjustments require a reason
+- Every score and gameplay operation is persisted immediately
+- Final placements use competition ranking, so tied leaders both receive first place
+- The action ledger records lifecycle, participant, question, and score events for future undo support
+
+### Completion accounting
+
+Completion is allowed only from `in_progress`. Unfinished questions require an additional confirmation. Completion, final placements, winner calculation, and usage updates occur in one SQLite transaction. Every board question—including skipped or unopened questions—increments `usedCount` exactly once. Repeated completion requests are idempotent.
+
+## Phase 2 migration
+
+`003_episode_lifecycle.sql` rebuilds the Phase 1 episode tables without losing existing data and adds:
+
+- `archived`, lifecycle timestamps, source episode, winner, and accounting guard fields
+- Persisted question states and outcomes
+- `episode_participants`
+- `game_actions`
+
+The seed command adds four clearly labeled demonstration episodes: draft, locked, in progress, and completed.
+
+## Episode lifecycle API
+
+- `GET /api/episodes`, `GET /api/episodes/:id`
+- `POST/PUT /api/episodes`, `DELETE /api/episodes/:id`
+- `POST /api/episodes/:id/duplicate`
+- `POST /api/episodes/:id/lock|unlock|start|complete|archive|restore`
+- Participant create, rename, remove, and score-reset endpoints
+- Question open, complete, and skip endpoints
+- Manual score-adjustment endpoint
+
+Invalid transitions return structured `code`, `error`, and optional `details` fields.
 
 ## Database migrations
 
@@ -73,15 +126,27 @@ The generator accepts a `RandomSource`; the supplied implementation hashes a see
 
 Recent-use modes are: never used, last X saved/locked episodes, last X days, and allow all. Inventory rules are never silently relaxed. A category is eligible only if all five difficulty levels remain available.
 
+## Manual lifecycle test
+
+1. Seed and start the app, then open **Episodes**.
+2. Open the demonstration draft and confirm its board is preserved.
+3. Edit metadata or reroll one position, save, then lock it.
+4. Start the locked episode and add two participants.
+5. Open a question, award or deduct its XP, and skip another question.
+6. Reload the browser and confirm the run, scores, question states, and history return.
+7. Complete the episode and confirm the unfinished-question warning.
+8. Verify placements and the winner in read-only review.
+9. Reload review mode and export a backup; verify lifecycle tables are included.
+
 ## Known limitations
 
 - Text questions only in Phase 1.
-- Saved episodes cannot yet be reopened from a list in the interface.
-- Locking validates through the same complete-board generator and persistence constraints, but there is not yet an unlock workflow.
 - CSV duplicate-ID database errors identify the ID, while field-validation failures provide row numbers.
 - Node currently labels its built-in SQLite API experimental even though it is available in the supported runtime.
-- No Host Console, Audience Display, WebSockets, scoring, gameplay timer, OBS styling, or D20 yet.
+- The run screen is a functional host workflow, not the final polished Host Console.
+- There is no multi-action undo, game timer, Audience Display, WebSockets, OBS styling, remote buzzer, or D20 yet.
+- Episode list pagination is implemented through the API; the current UI displays the first scalable page of results.
 
-## Recommended next phase
+## Recommended Phase 3
 
-Build saved-episode browsing/editing and completion accounting first, including incrementing `usedCount` and updating last-used fields atomically. Then implement a private Host Console and a strictly sanitized Audience Display with real-time synchronization and end-to-end gameplay tests. Advanced broadcast styling and D20 animation should follow those tests.
+Build a dedicated private Host Console and a strictly sanitized OBS-ready Audience Display with WebSocket synchronization. Add action undo and timer behavior before remote buzzers or advanced D20 presentation.

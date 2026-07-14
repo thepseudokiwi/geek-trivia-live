@@ -1,5 +1,5 @@
-import type { EpisodeCategory, EpisodeDraft, EpisodeOptions, EpisodeRecord, Question } from '../shared/types';
-async function request<T>(url:string, init?:RequestInit):Promise<T> { const response=await fetch(url,{...init,headers:{'Content-Type':'application/json',...init?.headers}}); if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.error??`Request failed (${response.status})`);} return response.status===204 ? undefined as T : response.json(); }
+import type { EpisodeCategory, EpisodeDetail, EpisodeDraft, EpisodeOptions, EpisodeRecord, EpisodeStatus, EpisodeSummary, Question } from '../shared/types';
+async function request<T>(url:string, init?:RequestInit):Promise<T> { const response=await fetch(url,{...init,headers:{'Content-Type':'application/json',...init?.headers}}); if(!response.ok){const body=await response.json().catch(()=>({}));const rows=Array.isArray(body.rows)?body.rows.map((r:{row:number;issues:string[]})=>`Row ${r.row}: ${r.issues.join(', ')}`).join(' '):'';throw new Error([body.error??`Request failed (${response.status})`,rows].filter(Boolean).join(' '));} return response.status===204 ? undefined as T : response.json(); }
 export const api={
   questions:(filters:Record<string,string|number|boolean|undefined>={})=>request<Question[]>(`/api/questions?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!==undefined&&v!=='').map(([k,v])=>[k,String(v)])).toString()}`),
   create:(q:Question)=>request<Question>('/api/questions',{method:'POST',body:JSON.stringify(q)}),
@@ -11,5 +11,18 @@ export const api={
   rerollQuestion:(board:EpisodeDraft,category:EpisodeCategory,difficulty:number,options:EpisodeOptions,rerollSeed:string)=>request<EpisodeCategory>('/api/episodes/reroll-question',{method:'POST',body:JSON.stringify({board,category,difficulty,options,rerollSeed})}),
   rerollCategory:(board:EpisodeDraft,index:number,options:EpisodeOptions,rerollSeed:string)=>request<EpisodeDraft>('/api/episodes/reroll-category',{method:'POST',body:JSON.stringify({board,index,options,rerollSeed})}),
   saveEpisode:(episode:EpisodeRecord)=>request<EpisodeRecord>('/api/episodes',{method:'POST',body:JSON.stringify(episode)}),
+  updateEpisode:(episode:EpisodeRecord)=>request<EpisodeDetail>(`/api/episodes/${episode.id}`,{method:'PUT',body:JSON.stringify(episode)}),
+  episodes:(filters:Record<string,string|number|undefined>={})=>request<{items:EpisodeSummary[];total:number}>(`/api/episodes?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!==undefined&&v!=='').map(([k,v])=>[k,String(v)])).toString()}`),
+  episode:(id:string)=>request<EpisodeDetail>(`/api/episodes/${id}`),
+  duplicateEpisode:(id:string)=>request<EpisodeDetail>(`/api/episodes/${id}/duplicate`,{method:'POST'}),
+  deleteEpisode:(id:string)=>request<void>(`/api/episodes/${id}`,{method:'DELETE'}),
+  transition:(id:string,action:'lock'|'unlock'|'start'|'archive'|'restore')=>request<EpisodeDetail>(`/api/episodes/${id}/${action}`,{method:'POST'}),
+  addParticipant:(id:string,displayName:string,color?:string)=>request<EpisodeDetail>(`/api/episodes/${id}/participants`,{method:'POST',body:JSON.stringify({displayName,color})}),
+  renameParticipant:(id:string,pid:string,displayName:string)=>request<EpisodeDetail>(`/api/episodes/${id}/participants/${pid}`,{method:'PUT',body:JSON.stringify({displayName})}),
+  removeParticipant:(id:string,pid:string)=>request<EpisodeDetail>(`/api/episodes/${id}/participants/${pid}`,{method:'DELETE'}),
+  questionAction:(id:string,qid:string,action:'open'|'complete'|'skip',body:Record<string,unknown>={})=>request<EpisodeDetail>(`/api/episodes/${id}/questions/${qid}/${action}`,{method:'POST',body:JSON.stringify(body)}),
+  adjustScore:(id:string,pid:string,delta:number,reason:string)=>request<EpisodeDetail>(`/api/episodes/${id}/scores/${pid}/adjust`,{method:'POST',body:JSON.stringify({delta,reason})}),
+  resetScores:(id:string)=>request<EpisodeDetail>(`/api/episodes/${id}/scores/reset`,{method:'POST'}),
+  completeEpisode:(id:string,confirmIncomplete:boolean)=>request<EpisodeDetail>(`/api/episodes/${id}/complete`,{method:'POST',body:JSON.stringify({confirmIncomplete})}),
   restore:(data:unknown)=>request<{restored:boolean}>('/api/restore',{method:'POST',body:JSON.stringify(data)}),
 };

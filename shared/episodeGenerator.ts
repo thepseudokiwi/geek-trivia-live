@@ -2,7 +2,7 @@ import type { Difficulty, EpisodeCategory, EpisodeDraft, EpisodeOptions, Questio
 import type { RandomSource } from './random.js';
 import { seededRandom, shuffle } from './random.js';
 
-export class EpisodeGenerationError extends Error {}
+export class EpisodeGenerationError extends Error {code='EPISODE_GENERATION_FAILED' as const;constructor(message:string,public details?:Record<string,unknown>){super(message);this.name='EpisodeGenerationError'}}
 export const xpForDifficulty = (difficulty: Difficulty) => difficulty * 100;
 
 function allowed(q: Question, options: EpisodeOptions) {
@@ -27,7 +27,7 @@ function viableCategories(questions: Question[]) {
 export function generateEpisode(questions: Question[], options: EpisodeOptions, random: RandomSource = seededRandom(options.seed)): EpisodeDraft {
   const eligible = questions.filter(q => allowed(q, options));
   const categories = viableCategories(eligible);
-  if (categories.length < options.categoryCount) throw new EpisodeGenerationError(`Need ${options.categoryCount} complete categories; found ${categories.length}.`);
+  if (categories.length < options.categoryCount) throw new EpisodeGenerationError(`Need ${options.categoryCount} complete categories; found ${categories.length}.`,{requiredCategories:options.categoryCount,eligibleCategories:categories.length});
   const manual = options.manualCategories ?? [];
   if (new Set(manual).size !== manual.length) throw new EpisodeGenerationError('Manual categories must be unique.');
   const byName = new Map(categories);
