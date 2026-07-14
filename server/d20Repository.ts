@@ -581,6 +581,18 @@ export function executeD20Command(
           "INVALID_D20_MODE",
           "The requested D20 mode is not active.",
         );
+      if (
+        mode === "question_selector" &&
+        db
+          .prepare(
+            "SELECT 1 FROM episode_questions WHERE episode_id=? AND modifier_status='active' LIMIT 1",
+          )
+          .get(input.episodeId)
+      )
+        throw new LifecycleError(
+          "D20_MODIFIER_ACTIVE",
+          "Finish or skip the question using the active D20 modifier first.",
+        );
       let q: any;
       if (mode === "question_selector") {
         if (e.active_question_id)

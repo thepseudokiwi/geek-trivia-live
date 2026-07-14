@@ -222,6 +222,13 @@ describe("event effects and scoring", () => {
     cmd("d20.roll", { mode: "event_die" }, () => 18);
     expect(d20.getPrivateD20(id)?.effectName).toBe("Double XP");
     cmd("d20.apply", {}, () => 0);
+    expect(
+      live.getPrivateLiveState(id, {
+        role: "controller",
+        controllerConnected: true,
+        audienceCount: 0,
+      }).hasActiveD20Modifier,
+    ).toBe(true);
     const p = episodes.addParticipant(id, { displayName: "Roller" })
       .participants[0];
     revision = (

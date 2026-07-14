@@ -29,6 +29,10 @@ test("D20 selector and Event Die use one authoritative persisted result", async 
   await host.getByRole("button", { name: "Show question" }).click();
   await expect(audience.locator(".broadcast-question h2")).toBeVisible();
   await host.getByRole("button", { name: "Complete", exact: true }).click();
+  const modeSelector = host.getByRole("combobox", { name: "Mode" });
+  await expect(modeSelector).toBeEnabled();
+  await modeSelector.selectOption("question_selector");
+  await expect(modeSelector).toHaveValue("question_selector");
   await request.put(`/api/episodes/${id}/d20`, {
     data: { mode: "event_die", animationDurationMs: 100 },
   });

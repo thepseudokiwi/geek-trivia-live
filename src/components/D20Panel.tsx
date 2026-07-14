@@ -5,6 +5,7 @@ import type {
   D20Settings,
   PrivateLiveState,
 } from "../../shared/types";
+import { d20ModeDisabledReason } from "../d20Availability.js";
 export function D20Panel({
   state,
   disabled,
@@ -20,7 +21,8 @@ export function D20Panel({
     [editing, setEditing] = useState(false),
     [settings, setSettings] = useState<D20Settings>(state.d20Settings);
   const roll = state.d20Private,
-    latest = state.d20History[0];
+    latest = state.d20History[0],
+    modeDisabledReason = d20ModeDisabledReason(state);
   const updateEffect = (index: number, patch: Partial<D20Effect>) =>
     setSettings({
       ...settings,
@@ -60,7 +62,8 @@ export function D20Panel({
       <label>
         Mode{" "}
         <select
-          disabled={disabled || Boolean(roll) || Boolean(state.activeQuestion)}
+          disabled={Boolean(modeDisabledReason)}
+          title={modeDisabledReason ?? "Choose how the D20 is used."}
           value={currentMode}
           onChange={(e) => void changeMode(e.target.value as D20Mode)}
         >
@@ -69,6 +72,11 @@ export function D20Panel({
           <option value="manual">Manual / Off</option>
         </select>
       </label>
+      {modeDisabledReason && (
+        <p className="field-help" role="status">
+          Mode unavailable: {modeDisabledReason}
+        </p>
+      )}
       <button
         className="d20-roll-button"
         disabled={
