@@ -87,6 +87,73 @@ The audience composition uses broadcast-safe margins, large type, high contrast,
 
 `004_live_console.sql` adds public mode, active question, answer reveal, revision, timer persistence, undo metadata, and the idempotent `live_commands` table. It preserves all Phase 2 question states and game-action history. Tests apply the ordered migrations to clean/Phase 1 data and validate a Phase 2-to-Phase 3 upgrade.
 
+## Phase 4A D20 system
+
+The D20 is a server-authoritative extension of the existing live command system. It does not use browser randomness and it does not create a parallel socket protocol. Host commands retain command IDs and expected episode revisions; accepted rolls are written before their result is broadcast. Refreshes and reconnects therefore receive the same persisted result.
+
+### Modes and fairness
+
+**Question Selector** builds an ordered pool of eligible episode-question rows on the server. Completed and active questions are excluded; skipped questions are included only when configured. The server chooses one direct uniform index with `crypto.randomInt(pool.length)`, then independently generates the theatrical D20 face with `crypto.randomInt(20) + 1`. The visible number is associated with that roll record rather than permanently mapped to a square. This gives every eligible square exactly one equal slot on both 4×5 and 5×5 boards without category or difficulty weighting.
+
+**Event Die** requires an active eligible question and resolves the result against the validated rule table. The default table is:
+
+| Roll | Effect | Correct award | Other behavior |
+|---|---|---|---|
+| 1 | Critical Failure | Base XP | Host may explicitly confirm a base-XP wrong-answer deduction |
+| 2–9 | Normal Question | Base XP | Normal timer |
+| 10–13 | Speed Challenge | Base XP | 10-second timer override; never starts automatically |
+| 14–16 | Bonus 100 XP | Base + 100 | Deductions remain base by default |
+| 17–18 | Steal Enabled | Base XP | Host records an initial miss and one final stealing award |
+| 19 | Double XP | Base × 2 | Deductions remain base by default |
+| 20 | Critical Hit: Triple XP | Base × 3 | Natural 20 presentation |
+
+Every active effect includes a name, inclusive range, type, multiplier, flat bonus, timer override, steal flag, scope, public description, private instructions, active flag, and display priority. Saving is rejected unless active ranges cover 1–20 exactly once with no gap or overlap.
+
+### Configuration
+
+The Host Console D20 panel provides mode selection, enable/disable, animation timing, reduced-motion timing, deduction behavior, skipped-question eligibility, generated sound cues, volume, three visual themes, and an editable rule range table. Settings are global defaults with per-episode overrides. The default themes are Neon Arcane, Classic Polyhedral, and Holographic Sci-Fi.
+
+Configuration endpoints:
+
+- `GET/PUT /api/settings/d20`
+- `GET/PUT /api/episodes/:id/d20`
+- `GET /api/episodes/:id/d20/rolls`
+
+Durable live commands are `d20.roll`, `d20.acknowledge`, `d20.apply`, `d20.cancel`, `d20.reroll`, and `d20.undo`. They use the existing HTTP command fallback and WebSocket controller lease. A deterministic `D20_TEST_RESULT` facility is honored only when `NODE_ENV=test`; production hosts cannot send a chosen result.
+
+### Modifier application and undo
+
+Applied modifiers are stored on the episode question with roll ID, base XP, effective award, effective deduction, timer override, steal flag, and status. Host Award/Deduct controls send only a direction and participant ID. The server reads the persisted modifier and computes the delta; it ignores client-calculated modified values. Duplicate correct awards are rejected.
+
+D20 undo preserves the original roll and adds a compensating action. An unapplied roll restores the prior selection and public mode. An applied modifier can be undone only after any dependent score action has itself been undone. Completed episodes and already-undone rolls remain immutable. The Host Console warns that a public visual result cannot be unseen.
+
+### Public projection, animation, and sound
+
+The audience receives result, public effect text, selected category/value, effective potential award, timer override, steal flag, timestamp, animation duration, theme, and optional sound preference. It never receives a question ID, unopened question text, private instructions, internal effect key, configuration snapshot, command metadata, or random-generator state.
+
+The presentation is a lightweight CSS 3D-styled polyhedral die that tumbles for the persisted duration and always displays the persisted final number. Natural 1 and Natural 20 have text and visual treatments. Reduced-motion replaces tumbling with a short scale transition. Refreshing mid-animation derives whether the result has landed from the stored roll timestamp.
+
+Sound cues use short Web Audio oscillator tones generated at runtime. There are no downloaded or third-party audio assets and therefore no external license obligation. Sound defaults off, respects the configured volume, and silently degrades when OBS or Chromium blocks audio autoplay.
+
+### Persistence and backup
+
+`005_d20_system.sql` adds global settings, validated effects, episode overrides, durable roll history, active-roll references, modifier fields, configuration snapshots, reroll references, and undo state. Migration tests preserve Phase 3 revision, display, timer, score, and action data. JSON backups add a `d20` section containing settings, effects, and rolls. Old backups without that section continue with defaults; restored effect ranges are validated before insertion.
+
+### Phase 4A OBS rehearsal
+
+1. Add the Audience Display as a 1920×1080 OBS Browser Source and test at both 30 and 60 FPS.
+2. Roll Question Selector on four- and five-category boards. Confirm the square highlights and its question text remains private.
+3. Exercise each default Event Die range, especially Natural 1, Speed Challenge, Double XP, and Natural 20.
+4. Test all three themes and the operating-system reduced-motion preference.
+5. Refresh the browser source during the tumble and after landing; the final face must remain identical.
+6. Restart the server after a result lands and verify the roll and modifier recover.
+7. Open three audience clients and verify synchronized result, effect, and selected square.
+8. Test sound disabled and enabled. In OBS, enable **Control audio via OBS** only when routing browser audio through the mixer.
+9. Watch CPU/GPU load at 30 and 60 FPS and test long category names.
+10. Record a short clip and verify the final number and effect remain readable at normal livestream size.
+
+The automated acceptance flow uses a test-only deterministic 19 to verify Selector persistence and Event Die Double XP, server-computed scoring, score undo, and modifier undo.
+
 ## Manual two-window acceptance test
 
 1. Seed the database, open `DEMO — In-Progress Episode` in the Host Console, and open its Audience Display in a second window.
@@ -210,11 +277,13 @@ Recent-use modes are: never used, last X saved/locked episodes, last X days, and
 - Node currently labels its built-in SQLite API experimental even though it is available in the supported runtime.
 - Host control is intentionally local and unauthenticated; anyone with local application access can request takeover.
 - Undo is limited to recent eligible live actions and cannot erase what viewers already saw after an answer reveal.
-- Timer expiration is reconciled by the server heartbeat while running and from timestamps in snapshots; no sound effect is included.
+- Timer expiration is reconciled by the server heartbeat while running and from timestamps in snapshots; timer-specific sound remains deferred.
 - Final mode and completed-episode production review remain intentionally conservative in this phase.
-- There is no remote buzzer, audience voting, chat integration, media playback, advanced wagering, cloud account service, or 3D D20.
+- The D20 uses a stylized CSS polyhedron rather than a physically accurate 20-face rigid-body simulation.
+- Generated D20 tones depend on browser/OBS autoplay permission and intentionally default off.
+- There is no remote buzzer, audience voting, chat integration, media playback, advanced wagering, or cloud account service.
 - Episode list pagination is implemented through the API; the current UI displays the first scalable page of results.
 
-## Recommended Phase 4
+## Recommended Phase 4B
 
-Add optional authenticated LAN host access, contestant buzzers, richer production transitions/audio cues, a final-round workflow, and the separately specified D20 modes. Keep all new contestant/public inputs behind the existing command, revision, and projection boundaries.
+Add the host-driven steal workflow refinements, optional authenticated LAN access, contestant buzzers, richer production transitions/audio cues, and a final-round workflow. Keep all new contestant/public inputs behind the existing command, revision, and projection boundaries.
