@@ -284,6 +284,64 @@ Recent-use modes are: never used, last X saved/locked episodes, last X days, and
 - There is no remote buzzer, audience voting, chat integration, media playback, advanced wagering, or cloud account service.
 - Episode list pagination is implemented through the API; the current UI displays the first scalable page of results.
 
-## Recommended Phase 4B
+## Phase 4B broadcast presentation
 
-Add the host-driven steal workflow refinements, optional authenticated LAN access, contestant buzzers, richer production transitions/audio cues, and a final-round workflow. Keep all new contestant/public inputs behind the existing command, revision, and projection boundaries.
+Phase 4B adds a server-authoritative Preview/Program layer without replacing live game state. The Host Console can privately preview any supported scene, select a transition, queue it, **Take** it to Program, or **Cut** immediately. Program, queued Preview, theme, profile, layout, audio state, safe areas, overlays, and transition end timestamps are persisted in SQLite and delivered through the existing revision-safe WebSocket room. The unqueued local Preview selection intentionally resets to Program on host refresh. Late Audience clients receive the final Program scene; elapsed transitions settle without replaying indefinitely.
+
+Scenes include standby, intro, board, question, answer, scores, D20, intermission, round transition, winner, final, credits, and custom message. Transition duration is capped at five seconds, delay at two seconds, reduced-motion falls back to a cut, and essential text never depends on animation.
+
+### Themes and branding profiles
+
+Typed CSS-variable themes contain palettes, typography stacks, shapes, motion intensity, and transition defaults. Built-ins are original generic designs:
+
+- **Nerd Wars Classic** — dark geometric game-show panels with vibrant accents
+- **Neon Arcade** — energetic magenta/cyan grid treatment
+- **Fantasy Codex** — restrained parchment, bronze, and forest palette
+
+The default **Nerd Wars** profile and reusable **Geek Trivia Classic** profile select theme, show title, layout, D20 treatment, assets, audio profile, and safe areas. Profiles can be created or duplicated through the presentation API; the default cannot be deleted and referenced or missing assets are rejected.
+
+### OBS layouts and routes
+
+Use the Audience route as an OBS Browser Source at 1920×1080:
+
+```text
+http://localhost:5173/#audience/EPISODE_ID?layout=full
+http://localhost:5173/#audience/EPISODE_ID?layout=overlay
+http://localhost:5173/#audience/EPISODE_ID?layout=scorebug
+http://localhost:5173/#audience/EPISODE_ID?layout=question
+http://localhost:5173/#audience/EPISODE_ID?layout=lowerthird
+```
+
+Add `&audio=off` to disable Program audio, `&reducedMotion=true` for deterministic low-motion output. Invalid layouts safely fall back to the persisted profile layout. Overlay variants use a transparent page background. Title/action-safe guides and camera exclusion rectangles appear only when explicitly enabled for rehearsal.
+
+### Assets and licensing
+
+The Asset Manager accepts PNG, JPEG, WebP, MP3, WAV, OGG, MP4, and WOFF2 up to 25 MB. Server-owned filenames, path normalization, MIME allowlists, checksums, immutable public URLs, reference protection, and disabled SVG/HTML/executable uploads prevent active-content and traversal attacks. Files live in `data/presentation-assets/`, outside source control. Metadata is included in JSON backups; copy that directory separately for binary backup. Users are responsible for recording licensing and attribution and confirming broadcast rights. Bundled audio uses original WebAudio oscillator tones only; no commercial recordings or font files are included.
+
+### Audio routing
+
+Program audio has Master, Music, Stingers, UI, Timer, D20, Winner, and Ambient groups with bounded volumes and mute state. Audio cues carry unique IDs so refresh does not duplicate them. In OBS, enable **Control audio via OBS**, monitor through Advanced Audio Properties, and mute the local Browser Source monitor to prevent duplicate playback. Host Preview is silent unless explicitly previewed; Program defaults to audience-only audio. Browser autoplay policy may require one initial interaction.
+
+### Phase 4B OBS rehearsal
+
+1. Add full, overlay, score bug, question, and lower-third Browser Sources using the URLs above.
+2. Test at 1920×1080 at both 30 and 60 FPS; confirm no scrollbars or layout shift.
+3. Open Host and three Audience clients. Preview Intro and verify Program is unchanged, then Take it.
+4. Exercise every transition, Cut, queue cancellation, resync, reduced motion, and animation disable.
+5. Run board layouts with four and five categories, long category/question text, and two/eight players.
+6. Show question, answer, score graphic, D20, scores, intermission, winner, and credits.
+7. Test overlay transparency, safe guides, missing-asset fallbacks, Master mute, cue playback, and Browser Source audio monitoring.
+8. Refresh each Audience client and restart the server; confirm Program/layout restore and no cue duplicates.
+9. Record a sample at normal livestream viewing size and verify title/action safe areas and text readability.
+
+Physical OBS capture, audio-device routing, and recorded playback remain operator-required checks because CI cannot access the local OBS installation.
+
+### Backup and limitations
+
+JSON backup includes themes, profiles, templates, Program states, audio profiles, cue mappings, safe areas, and asset metadata. Old backups restore with built-in defaults. Binary assets require a separate copy of `data/presentation-assets`.
+
+The presentation editor intentionally is not a freeform motion-graphics designer. Generated tones are placeholders, automatic music crossfade is represented by persisted cue/group state rather than a multitrack mixer, image dimensions/video duration are not yet probed, and screenshot baselines may vary if operators install different local fonts.
+
+## Recommended Phase 4C
+
+Add authenticated LAN host access, remote buzzers, contestant responder state, richer licensed media probing/transcoding, optional hardware audio routing, and a final-round workflow while retaining the existing command/revision/projection boundaries.

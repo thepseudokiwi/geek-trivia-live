@@ -1,0 +1,22 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import crypto from "node:crypto";
+import type { LiveCommand } from "../shared/types.js";
+
+const dbPath=path.resolve(`data/test-presentation-${process.pid}.db`);let presentation:typeof import("../server/presentationRepository.js"),episodes:typeof import("../server/episodesRepository.js"),live:typeof import("../server/liveRepository.js"),db:any,revision=0;const id="DEMO-EP-RUN";
+beforeAll(async()=>{for(const script of["server/db/migrate.ts","server/db/seed.ts"])execFileSync(process.execPath,["--import","tsx",script],{cwd:process.cwd(),env:{...process.env,DATABASE_PATH:dbPath}});process.env.DATABASE_PATH=dbPath;presentation=await import("../server/presentationRepository.js");episodes=await import("../server/episodesRepository.js");live=await import("../server/liveRepository.js");db=(await import("../server/db/database.js")).db;revision=(db.prepare("SELECT revision FROM episodes WHERE id=?").get(id)as any).revision});afterAll(()=>db.close());
+const command=(type:LiveCommand["type"],payload:Record<string,unknown>={})=>{const result=presentation.executePresentationCommand({episodeId:id,commandId:crypto.randomUUID(),expectedRevision:revision,type,payload});revision=result.revision;return result};
+describe("Preview and Program",()=>{
+ it("loads three complete themes and two reusable profiles",()=>{expect(presentation.listThemes()).toHaveLength(3);expect(presentation.listProfiles().length).toBeGreaterThanOrEqual(2)});
+ it("keeps Preview private, takes it live, and restores Program",()=>{command("presentation.previewScene",{scene:"intro"});expect(presentation.getPrivatePresentation(id).previewScene).toBe("intro");expect(presentation.getPublicPresentation(id).programScene).not.toBe("intro");command("presentation.take",{transition:{kind:"fade",durationMs:99999}});const pub=presentation.getPublicPresentation(id);expect(pub.programScene).toBe("intro");expect(pub.transition.durationMs).toBe(5000);expect(presentation.getPublicPresentation(id).programScene).toBe("intro")});
+ it("cuts without animation and cancels a queue",()=>{command("presentation.queueScene",{scene:"board"});expect(presentation.getPrivatePresentation(id).queuedScene).toBe("board");command("presentation.cancelQueue");expect(presentation.getPrivatePresentation(id).queuedScene).toBeNull();command("presentation.cut",{scene:"scores"});expect(presentation.getPublicPresentation(id).transition.durationMs).toBe(0)});
+ it("rejects invalid scenes, themes, and layouts",()=>{expect(()=>command("presentation.previewScene",{scene:"private-notes"})).toThrow(/scene/i);expect(()=>command("presentation.setTheme",{themeId:"missing"})).toThrow(/theme/i);expect(()=>command("presentation.setLayout",{layout:"giant"})).toThrow(/layout/i)});
+ it("never exposes Preview or private administration",()=>{const text=JSON.stringify(live.getPublicLiveState(id));for(const forbidden of["previewScene","queuedScene","availableThemes","availableProfiles","licensing_note","stored_name","hostNotes","alternateAnswers","source"])expect(text).not.toContain(forbidden)});
+});
+describe("Profiles and assets",()=>{
+ it("duplicates profiles with unique IDs and protects the default",()=>{const copy=presentation.duplicateProfile("nerd-wars")as any;expect(copy.id).not.toBe("nerd-wars");expect(()=>presentation.deleteProfile("nerd-wars")).toThrow(/default/i)});
+ it("accepts a safe local asset without exposing its path",()=>{const asset=presentation.saveAsset({displayName:"Test logo",fileName:"logo.png",mimeType:"image/png",assetType:"logo",base64:Buffer.from([137,80,78,71,13,10,26,10]).toString("base64"),licensingNote:"Test fixture"});expect(asset.url).toMatch(/^\/api\/presentation\/assets\//);expect(JSON.stringify(asset)).not.toContain("presentation-assets");expect(presentation.assetFile(asset.id)?.file).toContain("presentation-assets")});
+ it("rejects executable types and traversal filenames",()=>{expect(()=>presentation.saveAsset({fileName:"bad.exe",mimeType:"application/x-msdownload",base64:"AA=="})).toThrow(/unsafe/i);expect(()=>presentation.saveAsset({fileName:"../logo.png",mimeType:"image/png",base64:"iVBORw0KGgo="})).toThrow(/filename/i)});
+ it("rejects missing profile assets gracefully",()=>{expect(()=>presentation.saveProfile({name:"Broken",config:{showTitle:"Broken",themeId:"nerd-wars-classic",logoAssetId:"missing"}})).toThrow(/missing/i)});
+});

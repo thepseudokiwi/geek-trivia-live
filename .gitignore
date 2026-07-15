@@ -1,6 +1,7 @@
 node_modules/
 dist/
 data/*.db*
+data/presentation-assets/
 playwright-report/
 test-results/
 *.tsbuildinfo

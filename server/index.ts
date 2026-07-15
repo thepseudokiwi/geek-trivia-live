@@ -12,6 +12,7 @@ import { executeLiveCommand,getPrivateLiveState,getPublicLiveState } from './liv
 import { attachLiveSockets } from './liveSocket.js';
 import { executeD20Command,exportD20Backup,getD20History,getD20Settings,restoreD20Backup,saveD20Settings,saveEpisodeD20Settings } from './d20Repository.js';
 import { createQuestion,deleteQuestion,duplicateQuestion,importQuestions,listQuestions,updateQuestion } from './questionsRepository.js';
+import { assetFile,deleteAsset,deleteProfile,duplicateProfile,executePresentationCommand,exportPresentationBackup,listAssets,listProfiles,listThemes,restorePresentationBackup,saveAsset,saveProfile } from './presentationRepository.js';
 import { db } from './db/database.js';
 import './db/migrate.js';
 
@@ -52,13 +53,22 @@ app.post('/api/episodes/:id/complete',wrap((q,r)=>r.json(completeEpisode(q.param
 
 app.get('/api/live/:id/public',wrap((q,r)=>r.json(getPublicLiveState(q.params.id))));
 app.get('/api/live/:id/private',wrap((q,r)=>r.json(getPrivateLiveState(q.params.id,{role:'observer',controllerConnected:false,audienceCount:0}))));
-app.post('/api/live/:id/commands',wrap((q,r)=>{const command={...q.body,episodeId:q.params.id};const result=String(command.type).startsWith('d20.')?executeD20Command(command):executeLiveCommand(command);live.broadcast(q.params.id);r.json(result)}));
+app.post('/api/live/:id/commands',wrap((q,r)=>{const command={...q.body,episodeId:q.params.id};const result=String(command.type).startsWith('d20.')?executeD20Command(command):String(command.type).startsWith('presentation.')?executePresentationCommand(command):executeLiveCommand(command);live.broadcast(q.params.id);r.json(result)}));
 app.post('/api/live/:id/complete',wrap((q,r)=>{completeEpisode(q.params.id,Boolean(q.body.confirmIncomplete));db.prepare("UPDATE episodes SET public_display_mode='final',revision=revision+1 WHERE id=?").run(q.params.id);live.broadcast(q.params.id);r.json(getPublicLiveState(q.params.id))}));
 app.post('/api/live/:id/participants',wrap((q,r)=>{addParticipant(q.params.id,q.body);db.prepare('UPDATE episodes SET revision=revision+1 WHERE id=?').run(q.params.id);live.broadcast(q.params.id);r.status(201).json({ok:true})}));
 app.get('/api/settings/d20',wrap((_q,r)=>r.json(getD20Settings())));app.put('/api/settings/d20',wrap((q,r)=>r.json(saveD20Settings(q.body))));
 app.get('/api/episodes/:id/d20',wrap((q,r)=>r.json(getD20Settings(q.params.id))));app.put('/api/episodes/:id/d20',wrap((q,r)=>r.json(saveEpisodeD20Settings(q.params.id,q.body))));app.get('/api/episodes/:id/d20/rolls',wrap((q,r)=>r.json(getD20History(q.params.id))));
-app.get('/api/backup',(_q,r)=>r.attachment('geek-trivia-backup.json').json({...exportAll(),d20:exportD20Backup()}));
-app.post('/api/restore',wrap((q,r)=>{const d20=q.body?.d20;restoreAll(q.body);restoreD20Backup(d20);r.json({restored:true})}));
+app.get('/api/presentation/themes',wrap((_q,r)=>r.json(listThemes())));
+app.get('/api/presentation/profiles',wrap((_q,r)=>r.json(listProfiles())));
+app.post('/api/presentation/profiles',wrap((q,r)=>r.status(201).json(saveProfile(q.body))));
+app.post('/api/presentation/profiles/:id/duplicate',wrap((q,r)=>r.status(201).json(duplicateProfile(q.params.id))));
+app.delete('/api/presentation/profiles/:id',wrap((q,r)=>{deleteProfile(q.params.id);r.status(204).end()}));
+app.get('/api/presentation/assets',wrap((_q,r)=>r.json(listAssets())));
+app.post('/api/presentation/assets',wrap((q,r)=>r.status(201).json(saveAsset(q.body))));
+app.get('/api/presentation/assets/:id',wrap((q,r)=>{const asset=assetFile(q.params.id);if(!asset)return r.status(404).end();r.type(asset.mime).set('Cache-Control','public, max-age=31536000, immutable').sendFile(asset.file)}));
+app.delete('/api/presentation/assets/:id',wrap((q,r)=>{deleteAsset(q.params.id,q.query.force==='true');r.status(204).end()}));
+app.get('/api/backup',(_q,r)=>r.attachment('geek-trivia-backup.json').json({...exportAll(),d20:exportD20Backup(),presentation:exportPresentationBackup()}));
+app.post('/api/restore',wrap((q,r)=>{const d20=q.body?.d20,presentation=q.body?.presentation;restoreAll(q.body);restoreD20Backup(d20);restorePresentationBackup(presentation);r.json({restored:true})}));
 app.use((error:any,_q:any,r:any,_n:any)=>{const duplicate=String(error?.message).includes('UNIQUE constraint failed: questions.id');const status=error instanceof LifecycleError?(error.code==='EPISODE_NOT_FOUND'?404:409):duplicate?409:400;r.status(status).json({error:duplicate?'A question with that ID already exists.':error instanceof ZodError?error.issues.map(x=>`${x.path.join('.')}: ${x.message}`).join('; '):error?.message??'Unexpected error.',code:error?.code,details:error?.details})});
 
 const server=createServer(app),live=attachLiveSockets(server);

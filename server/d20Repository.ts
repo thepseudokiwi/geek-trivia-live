@@ -676,6 +676,7 @@ export function executeD20Command(
         q.question_id,
         { rollId, result, mode },
       );
+      db.prepare("INSERT INTO presentation_state(episode_id,program_scene,preview_scene) VALUES(?,'d20','d20') ON CONFLICT(episode_id) DO UPDATE SET program_scene='d20',preview_scene='d20'").run(input.episodeId);
       if (mode === "event_die" && !settings.requireConfirmation)
         applyRoll(rollRow(rollId));
     } else {
@@ -712,6 +713,7 @@ export function executeD20Command(
         action(input.episodeId, "d20_acknowledged", row.selected_question_id, {
           rollId: row.id,
         });
+        db.prepare("UPDATE presentation_state SET program_scene='board',preview_scene='board' WHERE episode_id=?").run(input.episodeId);
       } else if (input.type === "d20.apply") {
         if (row.status === "applied")
           throw new LifecycleError(
@@ -719,6 +721,7 @@ export function executeD20Command(
             "This roll is already applied.",
           );
         applyRoll(row);
+        db.prepare("UPDATE presentation_state SET program_scene='question',preview_scene='question' WHERE episode_id=?").run(input.episodeId);
       } else if (input.type === "d20.cancel") {
         restorePrior(input.episodeId, JSON.parse(row.prior_state_json));
         db.prepare(
