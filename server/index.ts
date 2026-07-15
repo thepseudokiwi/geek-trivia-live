@@ -14,6 +14,7 @@ import { executeD20Command,exportD20Backup,getD20History,getD20Settings,restoreD
 import { createQuestion,deleteQuestion,duplicateQuestion,importQuestions,listQuestions,updateQuestion } from './questionsRepository.js';
 import { assetFile,deleteAsset,deleteProfile,duplicateProfile,executePresentationCommand,exportPresentationBackup,listAssets,listProfiles,listThemes,restorePresentationBackup,saveAsset,saveProfile } from './presentationRepository.js';
 import { db } from './db/database.js';
+import { adjudicate,armBuzzer,clearContestantLiveData,contestantReady,controlResponseTimer,disconnectContestant,exportContestantBackup,getContestantState,getHostContestantState,getJoinSession,heartbeatContestant,joinContestant,openJoinSession,reconnectContestant,removeContestant,restoreContestantBackup,setJoinState,setReadyCheck,showJoinGraphic } from './contestantRepository.js';
 import './db/migrate.js';
 
 const app=express();app.use(express.json({limit:'25mb'}));
@@ -22,6 +23,12 @@ const filters=(q:any)=>({search:String(q.search??''),category:String(q.category?
 const hydrate=(o:any)=>o.recentUsePolicy?.mode==='last-episodes'?{...o,recentUsePolicy:{...o.recentUsePolicy,recentEpisodeIds:recentEpisodeIds(o.recentUsePolicy.count)}}:o;
 
 app.get('/api/health',(_q,r)=>r.json({ok:true}));
+app.post('/api/contestant/join',wrap((q,r)=>r.status(201).json(joinContestant(q.body,q.ip??'local'))));
+app.post('/api/contestant/reconnect',wrap((q,r)=>r.json(reconnectContestant(String(q.body.token)))));
+app.get('/api/contestant/session',wrap((q,r)=>r.json(getContestantState(String(q.headers.authorization??'').replace(/^Bearer /,'')))));
+app.post('/api/contestant/ready',wrap((q,r)=>r.json(contestantReady(String(q.headers.authorization??'').replace(/^Bearer /,''),Boolean(q.body.ready)))));
+app.post('/api/contestant/heartbeat',wrap((q,r)=>{heartbeatContestant(String(q.headers.authorization??'').replace(/^Bearer /,''),q.body.rtt);r.json({ok:true})}));
+app.post('/api/contestant/leave',wrap((q,r)=>{disconnectContestant(String(q.headers.authorization??'').replace(/^Bearer /,''),true);r.status(204).end()}));
 app.get('/api/questions',(q,r)=>r.json(listQuestions(filters(q.query))));
 app.post('/api/questions',wrap((q,r)=>r.status(201).json(createQuestion(questionSchema.parse(q.body)))));
 app.put('/api/questions/:id',wrap((q,r)=>r.json(updateQuestion(q.params.id,questionSchema.parse(q.body)))));
@@ -50,6 +57,18 @@ app.post('/api/episodes/:id/questions/:questionId/skip',wrap((q,r)=>r.json(setQu
 app.post('/api/episodes/:id/scores/:participantId/adjust',wrap((q,r)=>r.json(adjustScore(q.params.id,q.params.participantId,Number(q.body.delta),q.body.reason))));
 app.post('/api/episodes/:id/scores/reset',wrap((q,r)=>r.json(resetScores(q.params.id))));
 app.post('/api/episodes/:id/complete',wrap((q,r)=>r.json(completeEpisode(q.params.id,Boolean(q.body.confirmIncomplete)))));
+app.get('/api/episodes/:id/join-session',wrap((q,r)=>r.json(getJoinSession(q.params.id))));
+app.post('/api/episodes/:id/join-session/open',wrap((q,r)=>{openJoinSession(q.params.id,q.body);live.broadcast(q.params.id);r.json(getHostContestantState(q.params.id))}));
+app.post('/api/episodes/:id/join-session/lock',wrap((q,r)=>{setJoinState(q.params.id,'locked');live.broadcast(q.params.id);r.json(getHostContestantState(q.params.id))}));
+app.post('/api/episodes/:id/join-session/revoke',wrap((q,r)=>{setJoinState(q.params.id,'revoked');live.broadcast(q.params.id);r.json(getHostContestantState(q.params.id))}));
+app.post('/api/episodes/:id/join-session/regenerate',wrap((q,r)=>{openJoinSession(q.params.id,q.body);live.broadcast(q.params.id);r.json(getHostContestantState(q.params.id))}));
+app.get('/api/episodes/:id/contestants',wrap((q,r)=>r.json(getHostContestantState(q.params.id))));
+app.post('/api/episodes/:id/ready-check',wrap((q,r)=>{const x=setReadyCheck(q.params.id,Boolean(q.body.open),Boolean(q.body.reset));live.broadcast(q.params.id);r.json(x)}));
+app.post('/api/episodes/:id/join-session/show-graphic',wrap((q,r)=>{const x=showJoinGraphic(q.params.id,String(q.body.joinUrl));live.broadcast(q.params.id);r.json(x)}));
+app.delete('/api/episodes/:id/contestants/:sessionId',wrap((q,r)=>{const x=removeContestant(q.params.id,q.params.sessionId);live.broadcast(q.params.id);r.json(x)}));
+for(const state of ['arm','open','lock','cancel','steal'] as const)app.post(`/api/episodes/:id/buzzer/${state}`,wrap((q,r)=>{const map={arm:'armed',open:'open',lock:'locked',cancel:'cancelled',steal:'steal-open'}as const,x=armBuzzer(q.params.id,map[state]);live.broadcast(q.params.id);r.json(x)}));
+app.post('/api/episodes/:id/buzzer/adjudicate',wrap((q,r)=>{const x=adjudicate(q.params.id,q.body.outcome,Boolean(q.body.deduct));live.broadcast(q.params.id);r.json(x)}));
+for(const action of ['pause','resume','reset'] as const)app.post(`/api/episodes/:id/response-timer/${action}`,wrap((q,r)=>{const x=controlResponseTimer(q.params.id,action,q.body.durationMs);live.broadcast(q.params.id);r.json(x)}));
 
 app.get('/api/live/:id/public',wrap((q,r)=>r.json(getPublicLiveState(q.params.id))));
 app.get('/api/live/:id/private',wrap((q,r)=>r.json(getPrivateLiveState(q.params.id,{role:'observer',controllerConnected:false,audienceCount:0}))));
@@ -67,8 +86,8 @@ app.get('/api/presentation/assets',wrap((_q,r)=>r.json(listAssets())));
 app.post('/api/presentation/assets',wrap((q,r)=>r.status(201).json(saveAsset(q.body))));
 app.get('/api/presentation/assets/:id',wrap((q,r)=>{const asset=assetFile(q.params.id);if(!asset)return r.status(404).end();r.type(asset.mime).set('Cache-Control','public, max-age=31536000, immutable').sendFile(asset.file)}));
 app.delete('/api/presentation/assets/:id',wrap((q,r)=>{deleteAsset(q.params.id,q.query.force==='true');r.status(204).end()}));
-app.get('/api/backup',(_q,r)=>r.attachment('geek-trivia-backup.json').json({...exportAll(),d20:exportD20Backup(),presentation:exportPresentationBackup()}));
-app.post('/api/restore',wrap((q,r)=>{const d20=q.body?.d20,presentation=q.body?.presentation;restoreAll(q.body);restoreD20Backup(d20);restorePresentationBackup(presentation);r.json({restored:true})}));
+app.get('/api/backup',(_q,r)=>r.attachment('geek-trivia-backup.json').json({...exportAll(),d20:exportD20Backup(),presentation:exportPresentationBackup(),contestants:exportContestantBackup()}));
+app.post('/api/restore',wrap((q,r)=>{const d20=q.body?.d20,presentation=q.body?.presentation,contestants=q.body?.contestants;clearContestantLiveData();restoreAll(q.body);restoreD20Backup(d20);restorePresentationBackup(presentation);restoreContestantBackup(contestants);r.json({restored:true})}));
 app.use((error:any,_q:any,r:any,_n:any)=>{const duplicate=String(error?.message).includes('UNIQUE constraint failed: questions.id');const status=error instanceof LifecycleError?(error.code==='EPISODE_NOT_FOUND'?404:409):duplicate?409:400;r.status(status).json({error:duplicate?'A question with that ID already exists.':error instanceof ZodError?error.issues.map(x=>`${x.path.join('.')}: ${x.message}`).join('; '):error?.message??'Unexpected error.',code:error?.code,details:error?.details})});
 
 const server=createServer(app),live=attachLiveSockets(server);

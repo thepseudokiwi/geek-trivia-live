@@ -11,6 +11,7 @@
     "db:seed": "node --import tsx server/db/seed.ts",
     "questions:import": "node --import tsx scripts/questionsImport.ts",
     "questions:stats": "node --import tsx scripts/questionsStats.ts",
+    "buzzer:load": "node --import tsx scripts/buzzerLoad.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test"

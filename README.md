@@ -332,7 +332,7 @@ Recent-use modes are: never used, last X saved/locked episodes, last X days, and
 - Final mode and completed-episode production review remain intentionally conservative in this phase.
 - The D20 uses a stylized CSS polyhedron rather than a physically accurate 20-face rigid-body simulation.
 - Generated D20 tones depend on browser/OBS autoplay permission and intentionally default off.
-- There is no remote buzzer, audience voting, chat integration, media playback, advanced wagering, or cloud account service.
+- There is no audience voting, chat integration, advanced wagering, or cloud account service.
 - Episode list pagination is implemented through the API; the current UI displays the first scalable page of results.
 
 ## Phase 4B broadcast presentation
@@ -393,6 +393,43 @@ JSON backup includes themes, profiles, templates, Program states, audio profiles
 
 The presentation editor intentionally is not a freeform motion-graphics designer. Generated tones are placeholders, automatic music crossfade is represented by persisted cue/group state rather than a multitrack mixer, image dimensions/video duration are not yet probed, and screenshot baselines may vary if operators install different local fonts.
 
-## Recommended Phase 4C
+## Phase 4C contestant experience
 
-Add authenticated LAN host access, remote buzzers, contestant responder state, richer licensed media probing/transcoding, optional hardware audio routing, and a final-round workflow while retaining the existing command/revision/projection boundaries.
+Phase 4C adds the phone-first `/#play` and `/#play/JOINCODE` routes, contestant sessions, ready checks, teams, a server-authoritative buzzer, host adjudication, steals, response timing, reconnection, and gameplay statistics. The contestant route has no administrative navigation and receives a dedicated projection that omits hidden answers, alternate answers, notes, sources, filesystem paths, internal IDs, action history, device diagnostics, and host-control data.
+
+### Join codes and contestant sessions
+
+From an in-progress Host Console, select **Open joins**, then share the displayed link or seven-character code. Codes use cryptographically secure randomness and omit ambiguous characters. They are case-insensitive, expire, and can be locked, revoked, or regenerated; regeneration immediately invalidates the prior code. An optional PIN is stored with a salted scrypt hash. Reconnect tokens contain 256 bits of randomness and only SHA-256 hashes are stored. Refreshing a contestant page restores its identity from local browser storage. A reconnect request rotates the token; removed and revoked sessions fail immediately. Opening the same session in a second tab replaces the first connection by default.
+
+Join, reconnect, and buzz attempts are rate-limited. Names reject markup and control characters, and avatar/color values use server allowlists. Invalid codes and PINs return the same generic error to limit enumeration. This is designed for a trusted LAN or private beta; place it behind an authenticated reverse proxy before exposing it to the public internet.
+
+### Ready checks, teams, and buzzing
+
+The host can open/reset a ready check, lock joins, inspect connection/readiness/device count and approximate connection quality, and remove a session. Individual mode gives each contestant a scoring participant. Team mode maps every approved team device to one scoring participant; the first team device to buzz locks the whole team out of additional positions.
+
+The buzzer state machine is `disabled → armed → open → answering → resolved`, with `locked`, `steal-open`, and `cancelled` branches. Manual opening is the default. Each buzz includes an idempotency key, session, buzzer revision, sequence, and diagnostic client timestamp. SQLite `BEGIN IMMEDIATE` plus a revision-guarded update creates exactly one winner. Server receive order is authoritative; client time never determines placement. Network latency can affect arrival order, so this is server-order fairness—not a claim of physically simultaneous or scientifically precise reaction measurement.
+
+Correct/incorrect/no-answer/technical-fault decisions remain host-only. Correct answers call the existing server scoring path, including D20 multipliers and bonuses. A Steal Enabled modifier makes an incorrect respondent ineligible and opens the buzzer to the others. Positive scoring is recorded through the existing action ledger, preventing a second award. Correct and incorrect adjudications can be safely undone while preserving immutable buzz-attempt history. The separate 15-second response timer starts on a winning buzz and supports pause, resume, and reset without changing the question timer.
+
+### Backup and restore
+
+JSON backups include safe join settings, team/participant links, contestant metadata, buzzer history, attempts, and aggregate statistics. They never include raw reconnect tokens, active secret hashes, rate-limit state, or WebSocket state. Restoring invalidates active codes and sessions; contestants must join again. Before a rehearsal or import, stop the server and copy `data/geek-trivia.db`. Restore that file while the server is stopped to recover the exact prior live-session state.
+
+### Phase 4C LAN rehearsal
+
+1. Back up the database, start the app, and open Host plus the OBS Audience Display.
+2. Open joins and connect at least four phones using the displayed URL/code; use wired and Wi-Fi clients when possible.
+3. Ready every device, lock joins, and verify one intentionally poor connection is labeled without showing misleading millisecond precision.
+4. Open a question and have two devices buzz together; verify exactly one winner and lockout messaging everywhere.
+5. Mark the winner incorrect, run a steal, then mark the new responder correct.
+6. Apply a Double XP D20 result on another question, award it, and verify the server-computed score on Host, Audience, and phone.
+7. Undo the award/adjudication and confirm scores and buzzer state restore without changing buzz history.
+8. Refresh one phone, briefly disable its Wi-Fi, and verify identity/state recovery. Open a duplicate tab and confirm the older tab is replaced.
+9. Remove one contestant, regenerate the code, and confirm both the removed session and old code fail.
+10. Complete the episode and confirm contestant input is read-only. Record the session and review touch target size, messages, orientation, zoom, reduced motion, and OBS readability.
+
+Automated tests cannot perform the physical Wi-Fi, phone haptics/audio, OBS capture, or device-orientation portions; those remain an operator sign-off.
+
+### Known Phase 4C limitations and next phase
+
+The supported show limit remains eight contestants even though the development load tool stresses 100. Server restart restores persisted contestant identity and state, but connected browsers must reconnect. Server-order fairness cannot remove real network latency. Manual responder selection, captain-only team configuration, queued-responder advancement, a QR inside the temporary Audience join banner, and public-internet identity/authentication hardening are recommended for Phase 4D together with final-round play and richer diagnostics.
