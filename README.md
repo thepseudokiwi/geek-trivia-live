@@ -232,15 +232,66 @@ Migrations are applied once in filename order and recorded in the `migrations` t
 The CSV header is:
 
 ```text
-id,category,subcategory,difficulty,pointValue,questionText,correctAnswer,alternateAnswers,hostNotes,source,active,usedCount,dateLastUsed,episodeLastUsed
+id,category,subcategory,difficulty,pointValue,questionText,correctAnswer,alternateAnswers,questionType,mediaPath,hostNotes,source,active,usedCount,dateLastUsed,episodeLastUsed
 ```
 
 - `difficulty` must be 1–5. XP is always derived as difficulty × 100; imported `pointValue` is ignored.
 - `subcategory` is optional.
 - `alternateAnswers` uses `|` between answers.
+- `questionType` is optional and defaults to `text`; supported values are `text`, `image`, `audio`, `video`, and `multiple-choice`.
+- `mediaPath` is optional for text and multiple-choice questions and required for image, audio, and video questions. Use a safe application-relative path or an `http(s)` URL.
 - `active` is `true` or `false`; `usedCount` is zero or greater.
 - Dates should use ISO 8601 format.
 - Invalid imports are rejected transactionally with spreadsheet row numbers and field errors.
+
+### Production question-bank import
+
+Back up the database before a production import. Stop the development server, then use either SQLite's online backup command or a file copy while the application is stopped:
+
+```bash
+sqlite3 data/geek-trivia.db ".backup 'data/geek-trivia-before-import.db'"
+# Or, with the server stopped:
+cp data/geek-trivia.db data/geek-trivia-before-import.db
+```
+
+Always rehearse the file first. A dry run performs all validation and duplicate/distribution analysis without changing SQLite:
+
+```bash
+npm run questions:import -- questions.csv --dry-run --report reports/questions-import.json
+```
+
+For the real import, existing IDs are rejected unless one explicit policy is selected:
+
+```bash
+# Keep existing rows unchanged and import only new IDs
+npm run questions:import -- questions.csv --skip-existing --report reports/questions-import.json
+
+# Replace matching rows, including their usage fields, with CSV values
+npm run questions:import -- questions.csv --replace-existing --report reports/questions-import.json
+
+# Optionally deactivate active database questions absent from the file
+npm run questions:import -- questions.csv --replace-existing --deactivate-missing
+```
+
+The command derives XP from difficulty, stores alternate answers as JSON, rejects duplicate IDs and exact duplicate text, warns on normalized near-duplicates and missing sources, and reports category/difficulty coverage. Any invalid required row prevents the entire transaction. `--replace-existing` and `--skip-existing` are mutually exclusive.
+
+To inspect whether the active library can fill complete boards, run:
+
+```bash
+npm run questions:stats
+```
+
+This prints the active total and a category-by-difficulty matrix. `Complete boards` is the lowest difficulty count in that category.
+
+To restore the pre-import database, stop the server, preserve the current file for diagnosis, and restore the backup:
+
+```bash
+mv data/geek-trivia.db data/geek-trivia-after-failed-import.db
+cp data/geek-trivia-before-import.db data/geek-trivia.db
+npm run db:migrate
+```
+
+The CLI and Question Library use the same row normalization and Zod validation. The original CSV fields remain accepted; `questionType` and `mediaPath` are backward-compatible optional additions.
 
 ## Backup and restore
 

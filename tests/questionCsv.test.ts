@@ -1,0 +1,6 @@
+import{describe,expect,it}from'vitest';import{csvRowToQuestion,normalizeQuestionText}from'../shared/questionCsv.js';
+describe('question CSV normalization',()=>{
+ it('derives XP, splits alternates, and preserves supported media',()=>{const q=csvRowToQuestion({id:'MEDIA-1',category:'Games',difficulty:'4',pointValue:'999',questionText:'Identify this sound',correctAnswer:'Coin',alternateAnswers:'Coin sound|1-Up',questionType:'audio',mediaPath:'media/coin.ogg',active:'false'});expect(q.pointValue).toBe(400);expect(q.alternateAnswers).toEqual(['Coin sound','1-Up']);expect(q.questionType).toBe('audio');expect(q.mediaPath).toBe('media/coin.ogg');expect(q.active).toBe(false)});
+ it('rejects invalid types and unsafe or missing media paths',()=>{expect(()=>csvRowToQuestion({id:'X',category:'C',difficulty:1,questionText:'Q',correctAnswer:'A',questionType:'pdf'})).toThrow();expect(()=>csvRowToQuestion({id:'X',category:'C',difficulty:1,questionText:'Q',correctAnswer:'A',questionType:'image'})).toThrow(/mediaPath/);expect(()=>csvRowToQuestion({id:'X',category:'C',difficulty:1,questionText:'Q',correctAnswer:'A',mediaPath:'../secret'})).toThrow(/safe/)});
+ it('normalizes punctuation, case, accents, and spacing for comparison',()=>expect(normalizeQuestionText('  Café—WORLD?! ')).toBe('cafe world'));
+});
