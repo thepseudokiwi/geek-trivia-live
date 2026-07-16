@@ -15,8 +15,11 @@ import { createQuestion,deleteQuestion,duplicateQuestion,importQuestions,listQue
 import { assetFile,deleteAsset,deleteProfile,duplicateProfile,executePresentationCommand,exportPresentationBackup,listAssets,listProfiles,listThemes,restorePresentationBackup,saveAsset,saveProfile } from './presentationRepository.js';
 import { db } from './db/database.js';
 import { adjudicate,armBuzzer,clearContestantLiveData,contestantReady,controlResponseTimer,disconnectContestant,exportContestantBackup,getContestantState,getHostContestantState,getJoinSession,heartbeatContestant,joinContestant,openJoinSession,reconnectContestant,removeContestant,restoreContestantBackup,setJoinState,setReadyCheck,showJoinGraphic } from './contestantRepository.js';
+import { createTheme,deleteDesignerTheme,duplicateTheme,exportTheme,exportThemeDesignerBackup,getDesignerTheme,importTheme,inspectThemeImport,issuePreviewToken,listDesignerThemes,listThemeVersions,previewTheme,publishTheme,restoreThemeDesignerBackup,restoreThemeVersion,revertThemeDraft,saveThemeDraft,validateTheme } from './themeDesignerRepository.js';
 import './db/migrate.js';
 
+// Seed the built-in presentation packages before either presentation API is queried.
+listThemes();
 const app=express();app.use(express.json({limit:'25mb'}));
 const wrap=(fn:(q:any,r:any)=>unknown)=>(q:any,r:any,n:any)=>{try{Promise.resolve(fn(q,r)).catch(n)}catch(e){n(e)}};
 const filters=(q:any)=>({search:String(q.search??''),category:String(q.category??''),subcategory:String(q.subcategory??''),difficulty:q.difficulty?Number(q.difficulty):undefined,active:q.active===''||q.active===undefined?undefined:q.active==='true',usage:q.usage||undefined});
@@ -78,6 +81,22 @@ app.post('/api/live/:id/participants',wrap((q,r)=>{addParticipant(q.params.id,q.
 app.get('/api/settings/d20',wrap((_q,r)=>r.json(getD20Settings())));app.put('/api/settings/d20',wrap((q,r)=>r.json(saveD20Settings(q.body))));
 app.get('/api/episodes/:id/d20',wrap((q,r)=>r.json(getD20Settings(q.params.id))));app.put('/api/episodes/:id/d20',wrap((q,r)=>r.json(saveEpisodeD20Settings(q.params.id,q.body))));app.get('/api/episodes/:id/d20/rolls',wrap((q,r)=>r.json(getD20History(q.params.id))));
 app.get('/api/presentation/themes',wrap((_q,r)=>r.json(listThemes())));
+app.get('/api/theme-designer/themes',wrap((_q,r)=>r.json(listDesignerThemes())));
+app.post('/api/theme-designer/themes',wrap((q,r)=>r.status(201).json(createTheme(q.body))));
+app.get('/api/theme-designer/themes/:id',wrap((q,r)=>r.json(getDesignerTheme(q.params.id))));
+app.put('/api/theme-designer/themes/:id/draft',wrap((q,r)=>r.json(saveThemeDraft(q.params.id,q.body))));
+app.post('/api/theme-designer/themes/:id/publish',wrap((q,r)=>{const theme=publishTheme(q.params.id,q.body),episodes=db.prepare('SELECT episode_id FROM presentation_state WHERE theme_id=?').all(q.params.id)as any[];for(const episode of episodes)live.broadcast(episode.episode_id);r.json(theme)}));
+app.post('/api/theme-designer/themes/:id/revert',wrap((q,r)=>r.json(revertThemeDraft(q.params.id))));
+app.post('/api/theme-designer/themes/:id/duplicate',wrap((q,r)=>r.status(201).json(duplicateTheme(q.params.id,q.body?.name))));
+app.delete('/api/theme-designer/themes/:id',wrap((q,r)=>{deleteDesignerTheme(q.params.id);r.status(204).end()}));
+app.get('/api/theme-designer/themes/:id/versions',wrap((q,r)=>r.json(listThemeVersions(q.params.id))));
+app.post('/api/theme-designer/themes/:id/restore/:versionId',wrap((q,r)=>r.json(restoreThemeVersion(q.params.id,q.params.versionId))));
+app.post('/api/theme-designer/themes/:id/validate',wrap((q,r)=>r.json(validateTheme(q.body,Boolean(q.query.confirmContrast)))));
+app.get('/api/theme-designer/themes/:id/export',wrap((q,r)=>r.attachment(`${q.params.id}-theme.json`).json(exportTheme(q.params.id))));
+app.post('/api/theme-designer/themes/import/inspect',wrap((q,r)=>r.json(inspectThemeImport(q.body))));
+app.post('/api/theme-designer/themes/import',wrap((q,r)=>r.status(201).json(importTheme(q.body))));
+app.post('/api/theme-designer/themes/:id/preview-token',wrap((q,r)=>r.json(issuePreviewToken(q.params.id))));
+app.get('/api/theme-designer/preview/:id',wrap((q,r)=>r.json(previewTheme(q.params.id,q.query.token?String(q.query.token):undefined))));
 app.get('/api/presentation/profiles',wrap((_q,r)=>r.json(listProfiles())));
 app.post('/api/presentation/profiles',wrap((q,r)=>r.status(201).json(saveProfile(q.body))));
 app.post('/api/presentation/profiles/:id/duplicate',wrap((q,r)=>r.status(201).json(duplicateProfile(q.params.id))));
@@ -86,8 +105,8 @@ app.get('/api/presentation/assets',wrap((_q,r)=>r.json(listAssets())));
 app.post('/api/presentation/assets',wrap((q,r)=>r.status(201).json(saveAsset(q.body))));
 app.get('/api/presentation/assets/:id',wrap((q,r)=>{const asset=assetFile(q.params.id);if(!asset)return r.status(404).end();r.type(asset.mime).set('Cache-Control','public, max-age=31536000, immutable').sendFile(asset.file)}));
 app.delete('/api/presentation/assets/:id',wrap((q,r)=>{deleteAsset(q.params.id,q.query.force==='true');r.status(204).end()}));
-app.get('/api/backup',(_q,r)=>r.attachment('geek-trivia-backup.json').json({...exportAll(),d20:exportD20Backup(),presentation:exportPresentationBackup(),contestants:exportContestantBackup()}));
-app.post('/api/restore',wrap((q,r)=>{const d20=q.body?.d20,presentation=q.body?.presentation,contestants=q.body?.contestants;clearContestantLiveData();restoreAll(q.body);restoreD20Backup(d20);restorePresentationBackup(presentation);restoreContestantBackup(contestants);r.json({restored:true})}));
+app.get('/api/backup',(_q,r)=>r.attachment('geek-trivia-backup.json').json({...exportAll(),d20:exportD20Backup(),presentation:exportPresentationBackup(),themeDesigner:exportThemeDesignerBackup(),contestants:exportContestantBackup()}));
+app.post('/api/restore',wrap((q,r)=>{const d20=q.body?.d20,presentation=q.body?.presentation,contestants=q.body?.contestants,themeDesigner=q.body?.themeDesigner;clearContestantLiveData();restoreAll(q.body);restoreD20Backup(d20);restorePresentationBackup(presentation);restoreThemeDesignerBackup(themeDesigner);restoreContestantBackup(contestants);r.json({restored:true})}));
 app.use((error:any,_q:any,r:any,_n:any)=>{const duplicate=String(error?.message).includes('UNIQUE constraint failed: questions.id');const status=error instanceof LifecycleError?(error.code==='EPISODE_NOT_FOUND'?404:409):duplicate?409:400;r.status(status).json({error:duplicate?'A question with that ID already exists.':error instanceof ZodError?error.issues.map(x=>`${x.path.join('.')}: ${x.message}`).join('; '):error?.message??'Unexpected error.',code:error?.code,details:error?.details})});
 
 const server=createServer(app),live=attachLiveSockets(server);

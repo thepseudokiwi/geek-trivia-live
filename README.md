@@ -433,3 +433,33 @@ Automated tests cannot perform the physical Wi-Fi, phone haptics/audio, OBS capt
 ### Known Phase 4C limitations and next phase
 
 The supported show limit remains eight contestants even though the development load tool stresses 100. Server restart restores persisted contestant identity and state, but connected browsers must reconnect. Server-order fairness cannot remove real network latency. Manual responder selection, captain-only team configuration, queued-responder advancement, a QR inside the temporary Audience join banner, and public-internet identity/authentication hardening are recommended for Phase 4D together with final-round play and richer diagnostics.
+
+## Theme Designer
+
+Open **Theme Designer** from the main navigation or **Edit active theme** in Host Console Broadcast Controls. Built-in themes are read-only; duplicate one to create an editable local theme. The three-column workspace provides setting groups, a deterministic Program renderer preview, sample data and scene/layout/resolution selectors, and typed inspector controls for colors, typography, branding assets, panels, board, question, answer, scoreboard, timer, D20, lower thirds, transitions, layouts, safe areas, accessibility, and normalized element positions.
+
+Saving creates a private draft only. It never changes an Audience Display. **Publish** validates the complete theme, creates an immutable version, and updates any episode using that theme. **Revert** discards the draft; restoring a historical version loads that version into the draft so it can be reviewed before a new publish. Severe contrast, missing assets, invalid values, unsafe font/CSS-shaped input, and incompatible imports are blocked with section-level messages. JSON exports carry a compatibility version and asset references; imports report missing assets and safely clear unresolved optional branding references.
+
+For a clean OBS theme rehearsal, issue the temporary preview link with **OBS preview**. The token expires after two hours and exposes only deterministic sample data—never episode questions, answers, notes, participants, scores, or control state. Published previews need no token:
+
+```text
+http://localhost:5173/#theme-preview/THEME_ID?scene=board&layout=full&sample=eight-players
+```
+
+Useful query values include all Program scenes; `full`, `overlay`, `scorebug`, `question`, and `lowerthird` layouts; and `empty`, `two-players`, `four-players`, `eight-players`, `long-copy`, `negative`, `tie`, `natural-1`, `natural-20`, `timer-warning`, `timer-expired`, and `winner` samples. Preview and Audience Display share the same renderer, so theme behavior does not fork between editor and broadcast code.
+
+### Theme backup and restore
+
+Before major theme work, stop the server and copy `data/geek-trivia.db` plus `data/presentation-assets/`. The application JSON backup includes theme drafts, published configurations, version history, presets, and asset metadata, but binary assets must still be copied separately. Restore the prior database and asset directory while the server is stopped, then run migrations and restart the app. Old databases and backups receive compatible defaults through migration; generated SQLite files and uploaded assets remain outside source control.
+
+### Theme rehearsal checklist
+
+1. Duplicate every built-in theme and confirm built-ins cannot be edited or deleted.
+2. Change primary color, question font/size, board radius/gap, logo asset, and timer position; save the draft and confirm a live Audience Display remains unchanged.
+3. Exercise all scenes, layouts, sample states, 1920×1080 and smaller preview sizes, transparency checkerboard, camera simulation, safe areas, two/eight players, long text, negative scores, ties, natural 1/20, and timer warning/expired states.
+4. Publish and confirm all connected Audience Displays using the theme update. Refresh the browser and restart the server to verify persistence.
+5. Restore an older version, review it as a draft, publish it, then export/import the theme JSON.
+6. Test reduced motion, keyboard navigation, 200% browser zoom, invalid colors/fonts/sizes, severe contrast confirmation, missing assets, and a deliberately malformed import.
+7. Add the preview route to a 1920×1080 OBS Browser Source and record full and transparent layouts at 30 and 60 FPS.
+
+Physical OBS capture, installed-font rendering, camera compositing, audio routing, and recorded-playback review remain operator-required checks outside automated CI.
