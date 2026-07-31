@@ -36,7 +36,7 @@ const defaultEffects: D20Effect[] = [
     publicDescription:
       "Natural 1 — the question remains playable, but danger awaits.",
     privateInstructions:
-      "A wrong answer may deduct base XP. Confirm any deduction explicitly.",
+      "An incorrect answer automatically deducts the question's base XP.",
     active: true,
     displayPriority: 1,
   },
@@ -154,7 +154,7 @@ const defaultConfig = {
   speedDurationMs: 10000,
   criticalFailureConsequence: "wrong_answer_may_deduct_base_xp",
   resultDisplayDurationMs: 5000,
-  soundEnabled: false,
+  soundEnabled: true,
   volume: 0.5,
   theme: "neon_arcane" as const,
 };
@@ -633,9 +633,11 @@ export function executeD20Command(
       }
       result = randomInt(20) + 1;
       const effect =
-          mode === "event_die" ? resolvedEffect(settings, result) : undefined,
+          mode === "event_die" || result === 1 || result === 20 ? resolvedEffect(settings, result) : undefined,
         values = calc(q.difficulty * 100, effect, settings),
         prior = priorState(input.episodeId, q.question_id);
+      if(mode === "question_selector" && result === 20)values.award=q.difficulty*300;
+      if(mode === "question_selector" && result === 1)values.deduction=q.difficulty*100;
       rollId = crypto.randomUUID();
       db.prepare(
         `INSERT INTO d20_rolls(id,episode_id,command_id,mode,result,effect_key,selected_question_id,category_name,question_value,status,config_revision,config_snapshot_json,prior_state_json,effective_award_xp,effective_deduction_xp,timer_override_ms,steal_enabled,rerolls_roll_id) VALUES(?,?,?,?,?,?,?,?,?,'rolling',?,?,?,?,?,?,?,?)`,
@@ -773,6 +775,31 @@ export function executeD20Command(
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+export function revealD20SelectedQuestion(episodeId:string,rollId:string){
+  const e:any=requireEpisode(episodeId),row:any=rollRow(rollId);
+  if(!row||row.episode_id!==episodeId||row.mode!=="question_selector"||e.active_d20_roll_id!==rollId||!["rolling","landed"].includes(row.status))return false;
+  db.exec("BEGIN");
+  try{
+    const question:any=db.prepare("SELECT state FROM episode_questions WHERE episode_id=? AND question_id=?").get(episodeId,row.selected_question_id);
+    if(!question||!["unopened","opened","skipped"].includes(question.state))throw new LifecycleError("QUESTION_UNAVAILABLE","The D20-selected question is no longer available.");
+    db.prepare("UPDATE episode_questions SET state='opened',opened_at=COALESCE(opened_at,?),d20_roll_id=?,modifier_effect_key=?,base_xp=?,effective_award_xp=?,effective_deduction_xp=?,timer_override_ms=?,steal_enabled=?,modifier_status=CASE WHEN ? IS NULL THEN modifier_status ELSE 'active' END WHERE episode_id=? AND question_id=?").run(now(),row.id,row.effect_key,row.question_value,row.effective_award_xp,row.effective_deduction_xp,row.timer_override_ms,row.steal_enabled,row.effect_key,episodeId,row.selected_question_id);
+    db.prepare("UPDATE d20_rolls SET status='acknowledged',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(rollId);
+    db.prepare("UPDATE episodes SET active_question_id=?,active_d20_roll_id=NULL,answer_revealed=0,public_display_mode='question',revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(row.selected_question_id,episodeId);
+    db.prepare("INSERT INTO presentation_state(episode_id,program_scene,preview_scene) VALUES(?,'question','question') ON CONFLICT(episode_id) DO UPDATE SET program_scene='question',preview_scene='question',transition_started_at=NULL,transition_ends_at=NULL").run(episodeId);
+    action(episodeId,"d20_acknowledged",row.selected_question_id,{rollId,automatic:true});
+    db.exec("COMMIT");
+    return true;
+  }catch(error){db.exec("ROLLBACK");throw error}
+}
+
+export function scheduleD20QuestionReveal(episodeId:string,rollId:string,onReveal:()=>void){
+  const row:any=rollRow(rollId);
+  if(!row||row.mode!=="question_selector")return;
+  const config=JSON.parse(row.config_snapshot_json||"{}"),elapsed=Math.max(0,Date.now()-Date.parse(row.created_at)),delay=Math.max(0,Number(config.animationDurationMs??0)+5000-elapsed);
+  const timer=setTimeout(()=>{try{if(revealD20SelectedQuestion(episodeId,rollId))onReveal()}catch(error){console.error("Unable to reveal D20-selected question",error)}},delay);
+  timer.unref();
 }
 export function scoreActiveQuestion(
   id: string,

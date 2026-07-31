@@ -21,6 +21,7 @@ test("D20 selector and Event Die use one authoritative persisted result", async 
   await expect(host.getByRole("heading", { name: "D20 System" })).toBeVisible();
   await host.getByRole("button", { name: "Roll D20" }).click();
   await expect(audience.locator(".d20-public")).toBeVisible();
+  await expect(audience.locator('.d20-three canvas')).toBeVisible();
   await expect(audience.getByText("19", { exact: true })).toBeVisible();
   await expect(host.getByText("Selected:", { exact: true })).toBeVisible();
   await expect(audience.locator(".d20-public")).not.toContainText("Sample ");

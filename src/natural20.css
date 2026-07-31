@@ -1,0 +1,15 @@
+.d20-public{position:relative}
+.d20-public>*:not(.natural20-energy){position:relative;z-index:2}
+.natural20-energy{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden;background:radial-gradient(circle at 50% 42%,#fff9 0,#facc1540 9%,#7c3aed28 25%,transparent 52%);animation:n20-aura 1.1s ease-out both}
+.natural20-energy .energy-core,.natural20-energy .energy-ring,.natural20-energy b{position:absolute;left:50%;top:42%;display:block}
+.natural20-energy .energy-core{width:24vmin;height:24vmin;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,#fff 0,#fde047aa 22%,#a855f755 48%,transparent 72%);filter:blur(8px);animation:n20-core 1.2s ease-out both}
+.natural20-energy .energy-ring{width:18vmin;height:18vmin;border:clamp(3px,.45vmin,8px) solid #fde047;border-radius:50%;box-shadow:0 0 3vmin #fff,0 0 7vmin #a855f7;animation:n20-ring 1.45s cubic-bezier(.12,.7,.2,1) both}
+.natural20-energy .ring-two{animation-delay:.18s;border-color:#67e8f9}
+.natural20-energy b{width:clamp(5px,.65vmin,12px);height:clamp(14px,2.6vmin,46px);border-radius:999px;background:linear-gradient(#fff,#fde047 42%,#a855f7);box-shadow:0 0 1.5vmin #fff;transform-origin:50% 0;transform:translate(-50%,-50%) rotate(var(--spark-angle));animation:n20-spark 1.25s cubic-bezier(.1,.8,.2,1) var(--spark-delay) both}
+.d20-public.natural-20.landed .d20-three,.d20-public.natural-20.landed .d20-webgl-fallback{filter:drop-shadow(0 0 2vmin #fff) drop-shadow(0 0 5vmin #facc15);animation:n20-die-charge 1.2s ease-out both}
+@keyframes n20-aura{0%{opacity:0;transform:scale(.25)}25%{opacity:1}100%{opacity:.72;transform:scale(1)}}
+@keyframes n20-core{0%{opacity:0;transform:translate(-50%,-50%) scale(.15)}35%{opacity:1;transform:translate(-50%,-50%) scale(1.5)}100%{opacity:.7;transform:translate(-50%,-50%) scale(1)}}
+@keyframes n20-ring{0%{opacity:1;transform:translate(-50%,-50%) scale(.25)}100%{opacity:0;transform:translate(-50%,-50%) scale(5)}}
+@keyframes n20-spark{0%{opacity:0;transform:translate(-50%,-50%) rotate(var(--spark-angle)) translateY(0) scaleY(.2)}18%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) rotate(var(--spark-angle)) translateY(calc(-1 * var(--spark-distance))) scaleY(1)}}
+@keyframes n20-die-charge{0%{transform:scale(.82);filter:brightness(3) drop-shadow(0 0 1vmin #fff)}45%{transform:scale(1.12)}100%{transform:scale(1);filter:drop-shadow(0 0 2vmin #fff) drop-shadow(0 0 5vmin #facc15)}}
+@media(prefers-reduced-motion:reduce){.natural20-energy,.natural20-energy *,.d20-public.natural-20.landed .d20-three,.d20-public.natural-20.landed .d20-webgl-fallback{animation:none!important}.natural20-energy{opacity:.65}.natural20-energy b,.natural20-energy .energy-ring{display:none}}

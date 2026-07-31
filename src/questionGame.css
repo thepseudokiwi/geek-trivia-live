@@ -1,0 +1,28 @@
+.presentation .question-game {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
+  justify-content: center;
+  text-align: center;
+  padding: .55rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--text);
+  font: 700 clamp(1rem, 1.6vw, 1.65rem) var(--font-heading);
+}
+
+.presentation .question-game span {
+  color: var(--accent);
+  font-size: .7em;
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.presentation .question-game strong {
+  overflow-wrap: anywhere;
+}

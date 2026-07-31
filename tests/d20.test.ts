@@ -162,9 +162,14 @@ describe("selector fairness and authority", () => {
     );
     expect(duplicate.duplicate).toBe(true);
     expect(duplicate.rollId).toBe(result.rollId);
+    expect(d20.revealD20SelectedQuestion(id,result.rollId!)).toBe(true);
+    expect(live.getPublicLiveState(id).mode).toBe("question");
+    expect(live.getPublicLiveState(id).question?.category).toBe("D20 Category 2");
+    const selected:any=db.prepare("SELECT modifier_effect_key,effective_award_xp FROM episode_questions WHERE episode_id=? AND question_id='D20-C2-D3'").get(id);
+    expect(selected).toEqual({modifier_effect_key:"critical_hit",effective_award_xp:900});
   });
   it("excludes completed positions and current questions and reports empty inventory", () => {
-    cmd("d20.acknowledge", {}, () => 0);
+    db.prepare("UPDATE episode_questions SET modifier_status='consumed' WHERE episode_id=? AND modifier_status='active'").run(id);
     db.prepare(
       "UPDATE episode_questions SET state='completed' WHERE episode_id=? AND question_id='D20-C1-D1'",
     ).run(id);

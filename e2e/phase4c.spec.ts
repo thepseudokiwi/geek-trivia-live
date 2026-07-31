@@ -1,5 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
+test('host can place a silent VDO.Ninja view feed on the audience display',async({browser,request})=>{const copy=await request.post('/api/episodes/DEMO-EP-LOCKED/duplicate'),episode=await copy.json(),id=episode.id;await request.post(`/api/episodes/${id}/lock`);await request.post(`/api/episodes/${id}/start`);const created=await request.post(`/api/episodes/${id}/video-feeds`,{data:{label:'Nova Camera',viewUrl:'https://vdo.ninja/?view=NovaTest123',position:'top-right',visible:true}});expect(created.ok()).toBe(true);const audience=await browser.newPage();await audience.goto(`/#audience/${id}?audio=off`);const frame=audience.getByTitle('Nova Camera');await expect(frame).toBeVisible();await expect(frame).toHaveAttribute('src',/view=NovaTest123/);await expect(frame).toHaveAttribute('src',/noaudio=/);const hidden=await request.put(`/api/episodes/${id}/video-feeds/${(await created.json())[0].id}`,{data:{label:'Nova Camera',viewUrl:'https://vdo.ninja/?view=NovaTest123',position:'top-right',visible:false}});expect(hidden.ok()).toBe(true);await expect(frame).toHaveCount(0)});
+
 test('four contestants join, ready, buzz, steal, score and reconnect', async ({ browser, request }) => {
   const copy = await request.post('/api/episodes/DEMO-EP-LOCKED/duplicate');
   const episode = await copy.json();

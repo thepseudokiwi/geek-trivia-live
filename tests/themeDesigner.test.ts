@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { themeCssVariables } from '../shared/themeDesigner.js';
 
 const dbPath=path.resolve(`data/test-theme-designer-${process.pid}.db`);
 let themes:typeof import('../server/themeDesignerRepository.js');
@@ -18,11 +19,25 @@ beforeAll(async()=>{
 afterAll(()=>db.close());
 
 describe('Theme Designer drafts and publishing',()=>{
+  it('saves and publishes versioned built-in customizations while protecting deletion',()=>{
+    const builtIn=themes.getDesignerTheme('fantasy-codex'),draft=structuredClone(builtIn.draft);
+    draft.global.radius=builtIn.draft.global.radius+1;
+    themes.saveThemeDraft(builtIn.id,draft);
+    const published=themes.publishTheme(builtIn.id,{changeSummary:'Built-in customization'});
+    expect(published.isBuiltin).toBe(true);
+    expect(published.published.global.radius).toBe(draft.global.radius);
+    expect(published.publishedVersion).toBe(builtIn.publishedVersion+1);
+    expect(()=>themes.deleteDesignerTheme(builtIn.id)).toThrow(/cannot be deleted/i);
+  });
   it('validates typed values and rejects injection-shaped values',()=>{
     const config=themes.normalizeThemeConfig({},'Safe theme');
     expect(themes.validateTheme(config).valid).toBe(true);
     expect(themes.validateTheme({...config,colors:{...config.colors,primary:'url(javascript:alert(1))'}}).valid).toBe(false);
     expect(themes.validateTheme({...config,typography:{...config.typography,question:{...config.typography.question,fontFamily:'Arial; background:url(x)'}}}).valid).toBe(false);
+    config.typography.xpValue.fontFamily='XP Display Test';
+    config.typography.categoryHeader.fontFamily='Category Display Test';
+    expect(themeCssVariables(config)['--font-xp']).toBe('XP Display Test');
+    expect(themeCssVariables(config)['--font-category']).toBe('Category Display Test');
   });
 
   it('keeps a saved draft out of public presentation until publish',()=>{
@@ -69,5 +84,23 @@ describe('Theme Designer drafts and publishing',()=>{
     expect(()=>themes.previewTheme(copy.id,'invalid')).toThrow(/token/i);
     const issued=themes.issuePreviewToken(copy.id);
     expect(themes.previewTheme(copy.id,issued.token).config.colors.accent).toBe('#abcdef');
+  });
+
+  it('publishes a custom logo and protects it while the theme references it',()=>{
+    const asset=presentation.saveAsset({displayName:'Test Logo',fileName:'test-logo.png',mimeType:'image/png',assetType:'image',base64:Buffer.from([137,80,78,71,13,10,26,10]).toString('base64')});
+    const copy=themes.duplicateTheme('nerd-wars-classic','Logo Test');
+    const draft=structuredClone(copy.draft);
+    draft.branding.showTitle='The Kiwi Quiz';
+    draft.branding.logoAssetId=asset.id;
+    draft.layouts.full.positions.logo={...draft.layouts.full.positions.logo,x:24,y:12,width:18,height:14};
+    themes.saveThemeDraft(copy.id,draft);
+    expect(()=>presentation.deleteAsset(asset.id)).toThrow(/referenced/i);
+    themes.publishTheme(copy.id,{changeSummary:'Add custom logo'});
+    db.prepare('UPDATE presentation_state SET theme_id=? WHERE episode_id=?').run(copy.id,'DEMO-EP-RUN');
+    const output=presentation.getPublicPresentation('DEMO-EP-RUN');
+    expect(output.profile.showTitle).toBe('The Kiwi Quiz');
+    expect(output.profile.logoUrl).toBe(`/api/presentation/assets/${asset.id}`);
+    expect(output.theme.designer?.layouts.full.positions.logo).toMatchObject({x:24,y:12,width:18,height:14});
+    db.prepare('UPDATE presentation_state SET theme_id=? WHERE episode_id=?').run('nerd-wars-classic','DEMO-EP-RUN');
   });
 });

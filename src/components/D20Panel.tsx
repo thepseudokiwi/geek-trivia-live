@@ -6,6 +6,7 @@ import type {
   PrivateLiveState,
 } from "../../shared/types";
 import { d20ModeDisabledReason } from "../d20Availability.js";
+import { D20Presentation } from "./D20Presentation.js";
 export function D20Panel({
   state,
   disabled,
@@ -103,6 +104,11 @@ export function D20Panel({
         >
           Undo applied D20
         </button>
+      )}
+      {roll && (
+        <div className="d20-host-preview" aria-label="Audience D20 animation preview">
+          <D20Presentation roll={{ ...roll, soundEnabled: false }} />
+        </div>
       )}
       {roll && (
         <div className="d20-result-private" aria-live="polite">

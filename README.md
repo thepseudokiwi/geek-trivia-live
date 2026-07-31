@@ -2,6 +2,16 @@
 
 A local-first React application for maintaining a trivia library, building balanced episode boards, and producing a synchronized live trivia show. Phase 3 adds a private Host Console, a server-sanitized OBS Audience Display, WebSocket rooms, a persistent authoritative timer, revision-safe commands, a host-control lease, and compensating safe undo.
 
+## Public production deployment
+
+Production mode requires host authentication and refuses to start unless `HOST_PASSWORD`, a random `HOST_SESSION_SECRET` of at least 32 characters, and `APP_ORIGIN` are configured. Host access uses a signed, HTTP-only, SameSite cookie. All administrative APIs and Host WebSockets require that session. Contestant routes, sanitized Audience state, approved presentation assets, and token-limited theme previews remain public. State-changing browser requests and all WebSockets are restricted to the configured origin; security headers, HTTPS-only production cookies, login throttling, proxy-aware client addresses, and HSTS are enabled.
+
+Copy `.env.production.example` to a root-owned file outside the repository, replace every placeholder, and generate the session secret with a cryptographically secure password generator. Never commit the production environment file. Set `TRUST_PROXY=loopback` when Nginx or Caddy is on the same machine. Store `DATABASE_PATH` on local persistent storage, not NFS, SMB, Dropbox, or OneDrive.
+
+Build the client with `npm run build`, serve `dist/` through the reverse proxy, and proxy `/api/` plus WebSocket upgrades at `/ws` to the Node service on port 8787. Example Nginx and systemd files are in `deploy/`. Terminate TLS at the reverse proxy, run Node as an unprivileged dedicated user, restrict write access to the database and presentation-assets directories, and back up both together while the service is stopped or with SQLite's online backup tooling.
+
+Public routes are `/#play/JOINCODE`, `/#audience/EPISODE_ID`, and published or token-limited theme previews. Opening the root application, question library, episode tools, Theme Designer, or Host Console presents the host sign-in screen. Use **Sign out** after operating from a shared computer.
+
 ## Architecture
 
 - `src/`: React 19 + strict TypeScript + Vite interface. It contains the Question Library and minimal Episode Builder.
@@ -463,3 +473,23 @@ Before major theme work, stop the server and copy `data/geek-trivia.db` plus `da
 7. Add the preview route to a 1920×1080 OBS Browser Source and record full and transparent layouts at 30 and 60 FPS.
 
 Physical OBS capture, installed-font rendering, camera compositing, audio routing, and recorded-playback review remain operator-required checks outside automated CI.
+
+### Local broadcast fonts
+
+The Asset Manager accepts signature-validated TTF, OTF, and WOFF2 files. Uploaded fonts are stored in `data/presentation-assets/`, suggested by name in every Theme Designer typography role, and loaded only when the published theme uses them. Matching file checksums are imported once. Font binaries are deliberately excluded from Git and must be copied with the presentation-assets directory during backup.
+
+To import a directory of operator-supplied fonts:
+
+```bash
+npm run fonts:import -- /path/to/font-directory
+```
+
+The importer records each font as operator supplied. Confirm the creator's license permits livestream, recording, commercial, and redistribution use as applicable. A free download or fan-site archive is not itself proof of a permissive license; keep license documents alongside your external backup.
+
+For the complete Google Fonts catalog, enable the Web Fonts Developer API and place a restricted key in the ignored `.env.local` file:
+
+```text
+GOOGLE_FONTS_API_KEY=your_key
+```
+
+Restart the server after changing the file. Theme Designer retrieves catalog metadata through the Node server, never sends the key to the browser, and downloads only a selected family's regular face. Downloaded files are signature validated, checksum deduplicated, and cached in `data/presentation-assets/` for local/offline OBS playback. The app uses the macOS system certificate authorities for this connection. Review the selected family's Google Fonts license before broadcast use.

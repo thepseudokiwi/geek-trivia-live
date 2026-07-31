@@ -1,4 +1,4 @@
-import type { EpisodeCategory, EpisodeDetail, EpisodeDraft, EpisodeOptions, EpisodeRecord, EpisodeStatus, EpisodeSummary, Question } from '../shared/types';
+import type { EpisodeCategory, EpisodeDetail, EpisodeDraft, EpisodeOptions, EpisodeRecord, EpisodeStatus, EpisodeSummary, PrivatePresentationState, ProductionVideoFeed, Question } from '../shared/types';
 async function request<T>(url:string, init?:RequestInit):Promise<T> { const response=await fetch(url,{...init,headers:{'Content-Type':'application/json',...init?.headers}}); if(!response.ok){const body=await response.json().catch(()=>({}));const rows=Array.isArray(body.rows)?body.rows.map((r:{row:number;issues:string[]})=>`Row ${r.row}: ${r.issues.join(', ')}`).join(' '):'';throw new Error([body.error??`Request failed (${response.status})`,rows].filter(Boolean).join(' '));} return response.status===204 ? undefined as T : response.json(); }
 export const api={
   questions:(filters:Record<string,string|number|boolean|undefined>={})=>request<Question[]>(`/api/questions?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!==undefined&&v!=='').map(([k,v])=>[k,String(v)])).toString()}`),
@@ -14,6 +14,12 @@ export const api={
   updateEpisode:(episode:EpisodeRecord)=>request<EpisodeDetail>(`/api/episodes/${episode.id}`,{method:'PUT',body:JSON.stringify(episode)}),
   episodes:(filters:Record<string,string|number|undefined>={})=>request<{items:EpisodeSummary[];total:number}>(`/api/episodes?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!==undefined&&v!=='').map(([k,v])=>[k,String(v)])).toString()}`),
   episode:(id:string)=>request<EpisodeDetail>(`/api/episodes/${id}`),
+  episodePresentation:(id:string)=>request<PrivatePresentationState>(`/api/episodes/${id}/presentation`),
+  setEpisodeTheme:(id:string,themeId:string)=>request<PrivatePresentationState>(`/api/episodes/${id}/presentation/theme`,{method:'PUT',body:JSON.stringify({themeId})}),
+  videoFeeds:(id:string)=>request<ProductionVideoFeed[]>(`/api/episodes/${id}/video-feeds`),
+  createVideoFeed:(id:string,feed:Omit<ProductionVideoFeed,'id'|'participantName'>)=>request<ProductionVideoFeed[]>(`/api/episodes/${id}/video-feeds`,{method:'POST',body:JSON.stringify(feed)}),
+  updateVideoFeed:(id:string,feed:ProductionVideoFeed)=>request<ProductionVideoFeed[]>(`/api/episodes/${id}/video-feeds/${feed.id}`,{method:'PUT',body:JSON.stringify(feed)}),
+  deleteVideoFeed:(id:string,feedId:string)=>request<ProductionVideoFeed[]>(`/api/episodes/${id}/video-feeds/${feedId}`,{method:'DELETE'}),
   duplicateEpisode:(id:string)=>request<EpisodeDetail>(`/api/episodes/${id}/duplicate`,{method:'POST'}),
   deleteEpisode:(id:string)=>request<void>(`/api/episodes/${id}`,{method:'DELETE'}),
   transition:(id:string,action:'lock'|'unlock'|'start'|'archive'|'restore')=>request<EpisodeDetail>(`/api/episodes/${id}/${action}`,{method:'POST'}),

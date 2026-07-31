@@ -1,0 +1,21 @@
+body.backend-dark{background:#080d18;color:#e8edf7;color-scheme:dark}
+.backend-dark nav{background:#080d18;border-bottom:1px solid #34445f}
+.backend-dark nav .app-dark-toggle{background:#f3c64e;color:#17120a;font-weight:800}
+.backend-dark main{color:#e8edf7}
+.backend-dark input,.backend-dark select,.backend-dark textarea{background:#0a1221;color:#f8fafc;border-color:#536788}
+.backend-dark input::placeholder,.backend-dark textarea::placeholder{color:#8392aa}
+.backend-dark .secondary{background:#2b3b58;color:#f8fafc}
+.backend-dark .text{color:#aab8ff}
+.backend-dark .table-wrap,.backend-dark .editor,.backend-dark .builder-form,.backend-dark .board article,.backend-dark .empty,.backend-dark .episode-card,.backend-dark .score-row,.backend-dark .active-question,.backend-dark .history{background:#111a2b;color:#e8edf7;border-color:#34445f}
+.backend-dark th{background:#172238;color:#f8fafc}.backend-dark th,.backend-dark td{border-color:#34445f}
+.backend-dark .board-column,.backend-dark .run-column{background:#172238;color:#e8edf7}
+.backend-dark .status{background:#2b3b58;color:#e8edf7}.backend-dark .status-completed{background:#155538}.backend-dark .status-in_progress{background:#614a0d}.backend-dark .status-archived{background:#3a4659}
+.backend-dark .modal{background:#02050dcc}
+.backend-dark .error{background:#4a1820;color:#ffd9df}
+.backend-dark .warning{background:#44350d;color:#fff1ae;border-color:#e5a000}
+.backend-dark .d20-settings{background:#111a2b;color:#e8edf7}
+.backend-dark .theme-designer,.backend-dark .theme-designer-loading{background:#090d18;color:#e5edf9}
+.backend-dark .designer-toolbar{background:#0f172a;border-color:#334155}
+.backend-dark .designer-navigation,.backend-dark .designer-inspector{background:#101827;color:#e5edf9}
+.backend-dark .designer-inspector fieldset,.backend-dark .position-editor{border-color:#41516c}
+.backend-dark .font-preview-list button{background:#182235;border-color:#41516c}

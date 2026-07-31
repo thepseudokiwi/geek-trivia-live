@@ -16,4 +16,5 @@ export const contestantTokenSchema=z.object({token:z.string().min(32).max(200)})
 export const contestantCommandSchema=z.discriminatedUnion('type',[
  z.object({type:z.literal('contestant.ready')}),z.object({type:z.literal('contestant.notReady')}),z.object({type:z.literal('contestant.leave')}),z.object({type:z.literal('contestant.acknowledgeResult')}),
  z.object({type:z.literal('contestant.buzz'),commandId:z.string().uuid(),buzzerSessionId:z.string().uuid(),expectedRevision:z.number().int().positive(),clientTimestamp:z.string().max(40).optional(),clientSequence:z.number().int().nonnegative()})
+ ,z.object({type:z.literal('contestant.roll'),commandId:z.string().uuid(),expectedRevision:z.number().int().nonnegative()})
 ]);

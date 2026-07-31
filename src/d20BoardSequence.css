@@ -1,0 +1,25 @@
+.board-position>.audience-board{height:100%}
+.d20-board-sequence{position:absolute;inset:0;overflow:hidden;background:var(--background,#07111f);isolation:isolate}
+.d20-board-backdrop{position:absolute!important;left:var(--title-safe);right:var(--title-safe);top:11%;bottom:11%;width:auto!important;height:auto!important;z-index:1;transition:opacity .45s ease,filter .45s ease,transform .45s ease}
+.d20-board-sequence:has(.d20-public.landed) .d20-board-backdrop{opacity:.18;filter:blur(18px) brightness(.35);transform:scale(1.08)}
+.d20-roll-layer{position:absolute;inset:0;z-index:3;display:grid;place-items:center;transition:background .5s ease}
+.d20-board-sequence:has(.d20-public.landed) .d20-roll-layer{background:radial-gradient(circle at 50% 42%,color-mix(in srgb,var(--primary,#7c3aed) 35%,transparent),var(--background,#07111f) 68%)}
+.d20-roll-layer .d20-public{width:100%;height:100%;max-width:none;margin:0;padding:0}
+.d20-roll-layer .d20-public.rolling>h2{position:absolute;left:50%;bottom:7%;transform:translateX(-50%);padding:.55rem 1.4rem;border-radius:999px;background:#000b;border:1px solid var(--accent);font-size:clamp(1.4rem,2.6vw,2.8rem);white-space:nowrap}
+.d20-roll-layer .d20-public.rolling .d20-three,.d20-roll-layer .d20-public.rolling .d20-webgl-fallback{position:absolute;width:min(25vw,390px);will-change:transform;animation:d20-across-board var(--roll-duration,2200ms) linear both;filter:drop-shadow(0 2.5rem 1.4rem #0009) drop-shadow(0 0 2rem var(--accent))}
+.d20-roll-layer .d20-public.landed{align-content:center;background:transparent}
+.d20-roll-layer .d20-public.landed .d20-three{width:min(34vw,480px)}
+.d20-roll-layer .d20-public.landed h2{font-size:clamp(2.4rem,5vw,5.5rem);margin:.25rem}
+.d20-roll-layer .d20-public.landed>p{font-size:clamp(1.25rem,2vw,2.4rem)}
+.d20-roll-layer .d20-public.landed .selected-square{padding:.65rem 1.4rem;border:2px solid var(--accent);border-radius:999px;background:color-mix(in srgb,var(--surface) 88%,transparent);font-size:clamp(1.6rem,3vw,3.5rem)}
+.natural20-highlight-board{position:absolute!important;inset:0;z-index:5;opacity:0;pointer-events:none}.natural20-sequence .natural20-highlight-board{animation:n20-board-reveal 2s var(--selection-delay) ease both}.natural20-sequence .natural20-highlight-board .audience-square:not(.natural20-selected),.natural20-sequence .natural20-highlight-board h2{filter:brightness(.28);opacity:.55}.natural20-sequence .natural20-highlight-board .natural20-selected{position:relative;z-index:2;outline:.55rem solid #fff5a8;transform:scale(1.12);background:linear-gradient(135deg,#fff7ae,#f59e0b,#7c3aed);color:#160b2f;box-shadow:0 0 2rem #fff,0 0 5rem #facc15,0 0 9rem #7c3aed;animation:n20-xp-charge .42s ease-in-out infinite alternate}.natural20-sequence .d20-roll-layer{animation:n20-roll-fade 2s var(--selection-delay) ease both}@keyframes n20-board-reveal{0%{opacity:0;transform:scale(1.04)}15%,88%{opacity:1;transform:scale(1)}100%{opacity:0}}@keyframes n20-roll-fade{0%{opacity:1}18%,100%{opacity:0}}@keyframes n20-xp-charge{from{filter:brightness(1);box-shadow:0 0 2rem #fff,0 0 4rem #facc15}to{filter:brightness(1.45);box-shadow:0 0 3rem #fff,0 0 7rem #facc15,0 0 10rem #7c3aed}}
+@keyframes d20-across-board{
+  0%{transform:translate(var(--roll-x1,-34vw),var(--roll-y1,-18vh)) scale(.48) rotate(-24deg);animation-timing-function:cubic-bezier(.35,0,.65,1)}
+  16%{transform:translate(var(--roll-x2,28vw),var(--roll-y2,16vh)) scale(.68) rotate(12deg);animation-timing-function:cubic-bezier(.35,0,.65,1)}
+  32%{transform:translate(var(--roll-x3,-18vw),var(--roll-y3,20vh)) scale(.82) rotate(-10deg);animation-timing-function:cubic-bezier(.35,0,.65,1)}
+  48%{transform:translate(var(--roll-x4,32vw),var(--roll-y4,-15vh)) scale(.74) rotate(14deg);animation-timing-function:cubic-bezier(.35,0,.65,1)}
+  64%{transform:translate(var(--roll-x5,-30vw),var(--roll-y5,-10vh)) scale(.88) rotate(-8deg);animation-timing-function:cubic-bezier(.35,0,.65,1)}
+  80%{transform:translate(var(--roll-x6,20vw),var(--roll-y6,12vh)) scale(.92) rotate(7deg);animation-timing-function:cubic-bezier(.2,.7,.25,1)}
+  100%{transform:translate(0,0) scale(1) rotate(0)}
+}
+@media(prefers-reduced-motion:reduce){.d20-roll-layer .d20-public.rolling .d20-three,.d20-roll-layer .d20-public.rolling .d20-webgl-fallback{animation:none!important;transform:none}.d20-board-backdrop{transition:none}}
