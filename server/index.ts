@@ -8,16 +8,16 @@ import { validateImportRows } from '../shared/importValidation.js';
 import { seededRandom } from '../shared/random.js';
 import { questionSchema } from '../shared/validation.js';
 import { addParticipant,adjustScore,completeEpisode,deleteDraft,duplicateEpisode,exportAll,getEpisode,LifecycleError,listEpisodes,recentEpisodeIds,removeParticipant,renameParticipant,resetScores,restoreAll,saveEpisode,setQuestionState,startEpisode,transition } from './episodesRepository.js';
-import { executeLiveCommand,getPrivateLiveState,getPublicLiveState } from './liveRepository.js';
+import { getPublicLiveState } from './liveRepository.js';
 import { attachLiveSockets } from './liveSocket.js';
 import { createQuestion,deleteQuestion,duplicateQuestion,importQuestions,listQuestions,updateQuestion } from './questionsRepository.js';
-import { db } from './db/database.js';
 import './db/migrate.js';
 
-const app=express();app.use(express.json({limit:'25mb'}));
+const app=express();app.disable('x-powered-by');app.use(express.json({limit:'25mb'}));
 const wrap=(fn:(q:any,r:any)=>unknown)=>(q:any,r:any,n:any)=>{try{Promise.resolve(fn(q,r)).catch(n)}catch(e){n(e)}};
 const filters=(q:any)=>({search:String(q.search??''),category:String(q.category??''),subcategory:String(q.subcategory??''),difficulty:q.difficulty?Number(q.difficulty):undefined,active:q.active===''||q.active===undefined?undefined:q.active==='true',usage:q.usage||undefined});
 const hydrate=(o:any)=>o.recentUsePolicy?.mode==='last-episodes'?{...o,recentUsePolicy:{...o.recentUsePolicy,recentEpisodeIds:recentEpisodeIds(o.recentUsePolicy.count)}}:o;
+const legacyWrite=<T>(id:string,operation:()=>T):T=>{if(getEpisode(id).status==='in_progress')throw new LifecycleError('LIVE_COMMAND_REQUIRED','Use the Live Console for all in-progress episode changes.');return operation()};
 
 app.get('/api/health',(_q,r)=>r.json({ok:true}));
 app.get('/api/questions',(q,r)=>r.json(listQuestions(filters(q.query))));
@@ -39,25 +39,23 @@ app.post('/api/episodes/:id/duplicate',wrap((q,r)=>r.status(201).json(duplicateE
 app.delete('/api/episodes/:id',wrap((q,r)=>{deleteDraft(q.params.id);r.status(204).end()}));
 for(const[name,to]of Object.entries({lock:'locked',unlock:'draft',archive:'archived',restore:'completed'}))app.post(`/api/episodes/:id/${name}`,wrap((q,r)=>r.json(transition(q.params.id,to as any))));
 app.post('/api/episodes/:id/start',wrap((q,r)=>r.json(startEpisode(q.params.id))));
-app.post('/api/episodes/:id/participants',wrap((q,r)=>r.status(201).json(addParticipant(q.params.id,q.body))));
-app.put('/api/episodes/:id/participants/:participantId',wrap((q,r)=>r.json(renameParticipant(q.params.id,q.params.participantId,q.body.displayName))));
-app.delete('/api/episodes/:id/participants/:participantId',wrap((q,r)=>r.json(removeParticipant(q.params.id,q.params.participantId))));
-app.post('/api/episodes/:id/questions/:questionId/open',wrap((q,r)=>r.json(setQuestionState(q.params.id,q.params.questionId,'opened'))));
-app.post('/api/episodes/:id/questions/:questionId/complete',wrap((q,r)=>r.json(setQuestionState(q.params.id,q.params.questionId,'completed',q.body))));
-app.post('/api/episodes/:id/questions/:questionId/skip',wrap((q,r)=>r.json(setQuestionState(q.params.id,q.params.questionId,'skipped',q.body))));
-app.post('/api/episodes/:id/scores/:participantId/adjust',wrap((q,r)=>r.json(adjustScore(q.params.id,q.params.participantId,Number(q.body.delta),q.body.reason))));
-app.post('/api/episodes/:id/scores/reset',wrap((q,r)=>r.json(resetScores(q.params.id))));
-app.post('/api/episodes/:id/complete',wrap((q,r)=>r.json(completeEpisode(q.params.id,Boolean(q.body.confirmIncomplete)))));
+app.post('/api/episodes/:id/participants',wrap((q,r)=>r.status(201).json(legacyWrite(q.params.id,()=>addParticipant(q.params.id,q.body)))));
+app.put('/api/episodes/:id/participants/:participantId',wrap((q,r)=>r.json(legacyWrite(q.params.id,()=>renameParticipant(q.params.id,q.params.participantId,q.body.displayName)))));
+app.delete('/api/episodes/:id/participants/:participantId',wrap((q,r)=>r.json(legacyWrite(q.params.id,()=>removeParticipant(q.params.id,q.params.participantId)))));
+app.post('/api/episodes/:id/questions/:questionId/open',wrap((q,r)=>r.json(legacyWrite(q.params.id,()=>setQuestionState(q.params.id,q.params.questionId,'opened')))));
+app.post('/api/episodes/:id/questions/:questionId/complete',wrap((q,r)=>r.json(legacyWrite(q.params.id,()=>setQuestionState(q.params.id,q.params.questionId,'completed',q.body)))));
+app.post('/api/episodes/:id/questions/:questionId/skip',wrap((q,r)=>r.json(legacyWrite(q.params.id,()=>setQuestionState(q.params.id,q.params.questionId,'skipped',q.body)))));
+app.post('/api/episodes/:id/scores/:participantId/adjust',wrap((q,r)=>r.json(legacyWrite(q.params.id,()=>adjustScore(q.params.id,q.params.participantId,Number(q.body.delta),q.body.reason)))));
+app.post('/api/episodes/:id/scores/reset',wrap((q,r)=>r.json(legacyWrite(q.params.id,()=>resetScores(q.params.id)))));
+app.post('/api/episodes/:id/complete',wrap((q,r)=>r.json(legacyWrite(q.params.id,()=>completeEpisode(q.params.id,Boolean(q.body.confirmIncomplete))))));
 
 app.get('/api/live/:id/public',wrap((q,r)=>r.json(getPublicLiveState(q.params.id))));
-app.get('/api/live/:id/private',wrap((q,r)=>r.json(getPrivateLiveState(q.params.id,{role:'observer',controllerConnected:false,audienceCount:0}))));
-app.post('/api/live/:id/commands',wrap((q,r)=>{const result=executeLiveCommand({...q.body,episodeId:q.params.id});live.broadcast(q.params.id);r.json(result)}));
-app.post('/api/live/:id/complete',wrap((q,r)=>{completeEpisode(q.params.id,Boolean(q.body.confirmIncomplete));db.prepare("UPDATE episodes SET public_display_mode='final',revision=revision+1 WHERE id=?").run(q.params.id);live.broadcast(q.params.id);r.json(getPublicLiveState(q.params.id))}));
-app.post('/api/live/:id/participants',wrap((q,r)=>{addParticipant(q.params.id,q.body);db.prepare('UPDATE episodes SET revision=revision+1 WHERE id=?').run(q.params.id);live.broadcast(q.params.id);r.status(201).json({ok:true})}));
 app.get('/api/backup',(_q,r)=>r.attachment('geek-trivia-backup.json').json(exportAll()));
 app.post('/api/restore',wrap((q,r)=>{restoreAll(q.body);r.json({restored:true})}));
 app.use((error:any,_q:any,r:any,_n:any)=>{const duplicate=String(error?.message).includes('UNIQUE constraint failed: questions.id');const status=error instanceof LifecycleError?(error.code==='EPISODE_NOT_FOUND'?404:409):duplicate?409:400;r.status(status).json({error:duplicate?'A question with that ID already exists.':error instanceof ZodError?error.issues.map(x=>`${x.path.join('.')}: ${x.message}`).join('; '):error?.message??'Unexpected error.',code:error?.code,details:error?.details})});
 
-const server=createServer(app),live=attachLiveSockets(server);
-server.listen(8787,()=>console.log('Geek Trivia Live API: http://localhost:8787'));
+const apiHost=process.env.API_HOST??'127.0.0.1',apiPort=Number(process.env.API_PORT??8787),loopback=new Set(['127.0.0.1','::1','localhost']);
+if(!loopback.has(apiHost)&&process.env.ALLOW_REMOTE_ACCESS!=='true')throw new Error('Remote API binding requires ALLOW_REMOTE_ACCESS=true.');
+const server=createServer(app);attachLiveSockets(server);
+server.listen(apiPort,apiHost,()=>console.log(`Geek Trivia Live API: http://${apiHost}:${apiPort}`));
 export{app,server};
