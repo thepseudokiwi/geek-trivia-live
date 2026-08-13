@@ -37,7 +37,7 @@ Tests cover the Phase 1 generator/library rules plus saved episode listing, edit
 
 ## Phase 3 live-show architecture
 
-Open an in-progress episode from **Episodes** to enter its private route, `/#host/:episodeId`. The full-screen OBS route is `/#audience/:episodeId`. The first connected Host Console receives the control lease; later host tabs are read-only observers until they explicitly take control. Audience sockets are always read-only.
+Open an in-progress episode from **Episodes** to enter its private route, `/#host/:episodeId`. The full-screen OBS route is `/#audience/:episodeId`. The first connected Host Console receives the control lease; later host tabs are read-only observers until they explicitly take control. Audience sockets are always read-only. The API binds to `127.0.0.1` by default, and browser WebSocket connections are restricted to configured local origins.
 
 SQLite remains authoritative. Every durable live command includes an episode ID, unique command ID, and expected revision. The server validates the transition, writes it transactionally, increments the revision, and broadcasts fresh projections to the episode's WebSocket room. Replayed command IDs return their original revision without applying twice; stale revisions are rejected with the current revision. Refreshes and reconnects receive a complete snapshot. Durable show state recovers after a server restart; transient socket leases do not.
 
@@ -60,11 +60,9 @@ The latest eligible live action stores prior/resulting snapshots in `game_action
 ### Live HTTP and WebSocket contract
 
 - `GET /api/live/:id/public` — sanitized audience snapshot
-- `GET /api/live/:id/private` — private bootstrap snapshot
-- `POST /api/live/:id/commands` — validated durable command fallback
 - `WS /ws?episodeId=:id&role=host|audience&clientId=:id` — episode room
 
-Client messages: `host.claimControl`, `host.releaseControl`, `state.resync`, or `command` containing `episodeId`, `commandId`, `expectedRevision`, `type`, and `payload`. Command types are `question.select`, `question.show`, `answer.reveal`, `question.complete`, `question.skip`, `score.adjust`, `timer.start`, `timer.pause`, `timer.resume`, `timer.reset`, `timer.adjust`, `display.setMode`, and `action.undo`.
+Private state and durable mutations are available only through a host WebSocket. There is no HTTP fallback that can bypass the active host-control lease. Client messages are `host.claimControl`, `host.releaseControl`, `state.resync`, or `command` containing `episodeId`, `commandId`, `expectedRevision`, `type`, and `payload`. Command types are `question.select`, `question.show`, `answer.reveal`, `question.complete`, `question.skip`, `score.adjust`, `score.manualAdjust`, `participant.add`, `timer.start`, `timer.pause`, `timer.resume`, `timer.reset`, `timer.adjust`, `display.setMode`, `episode.complete`, and `action.undo`.
 
 Server events are `state.private`, `state.public`, `command.accepted`, and `command.rejected`. Ping/pong heartbeats remove stale sockets. Rooms, audience counts, and broadcasts are isolated by episode ID.
 
@@ -208,7 +206,7 @@ Recent-use modes are: never used, last X saved/locked episodes, last X days, and
 - Text questions only in Phase 1.
 - CSV duplicate-ID database errors identify the ID, while field-validation failures provide row numbers.
 - Node currently labels its built-in SQLite API experimental even though it is available in the supported runtime.
-- Host control is intentionally local and unauthenticated; anyone with local application access can request takeover.
+- Host control is intentionally local and unauthenticated; the API is loopback-only unless `ALLOW_REMOTE_ACCESS=true` is explicitly configured, and anyone with local application access can request takeover.
 - Undo is limited to recent eligible live actions and cannot erase what viewers already saw after an answer reveal.
 - Timer expiration is reconciled by the server heartbeat while running and from timestamps in snapshots; no sound effect is included.
 - Final mode and completed-episode production review remain intentionally conservative in this phase.
