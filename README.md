@@ -33,7 +33,7 @@ npm run db:seed
 npm run dev
 ```
 
-Open `http://localhost:5173`. The local API listens on `http://localhost:8787`.
+Open `http://localhost:8787`. The built browser interface, API, and WebSocket service all use port `8787`. Port `5173` is reserved only for optional Vite development work.
 
 ## Tests and production build
 
@@ -366,11 +366,11 @@ The default **Nerd Wars** profile and reusable **Geek Trivia Classic** profile s
 Use the Audience route as an OBS Browser Source at 1920×1080:
 
 ```text
-http://localhost:5173/#audience/EPISODE_ID?layout=full
-http://localhost:5173/#audience/EPISODE_ID?layout=overlay
-http://localhost:5173/#audience/EPISODE_ID?layout=scorebug
-http://localhost:5173/#audience/EPISODE_ID?layout=question
-http://localhost:5173/#audience/EPISODE_ID?layout=lowerthird
+http://localhost:8787/#audience/EPISODE_ID?layout=full
+http://localhost:8787/#audience/EPISODE_ID?layout=overlay
+http://localhost:8787/#audience/EPISODE_ID?layout=scorebug
+http://localhost:8787/#audience/EPISODE_ID?layout=question
+http://localhost:8787/#audience/EPISODE_ID?layout=lowerthird
 ```
 
 Add `&audio=off` to disable Program audio, `&reducedMotion=true` for deterministic low-motion output. Invalid layouts safely fall back to the persisted profile layout. Overlay variants use a transparent page background. Title/action-safe guides and camera exclusion rectangles appear only when explicitly enabled for rehearsal.
@@ -453,7 +453,7 @@ Saving creates a private draft only. It never changes an Audience Display. **Pub
 For a clean OBS theme rehearsal, issue the temporary preview link with **OBS preview**. The token expires after two hours and exposes only deterministic sample data—never episode questions, answers, notes, participants, scores, or control state. Published previews need no token:
 
 ```text
-http://localhost:5173/#theme-preview/THEME_ID?scene=board&layout=full&sample=eight-players
+http://localhost:8787/#theme-preview/THEME_ID?scene=board&layout=full&sample=eight-players
 ```
 
 Useful query values include all Program scenes; `full`, `overlay`, `scorebug`, `question`, and `lowerthird` layouts; and `empty`, `two-players`, `four-players`, `eight-players`, `long-copy`, `negative`, `tie`, `natural-1`, `natural-20`, `timer-warning`, `timer-expired`, and `winner` samples. Preview and Audience Display share the same renderer, so theme behavior does not fork between editor and broadcast code.

@@ -21,6 +21,8 @@ export function selectEligible<T>(pool: T[], randomInt: RandomInt): T {
     );
   return pool[randomInt(pool.length)];
 }
+function ensureQuestionMapping(episodeId:string){const rows=db.prepare('SELECT question_id FROM episode_questions WHERE episode_id=? AND category_position<4 ORDER BY category_position,difficulty').all(episodeId)as Array<{question_id:string}>;if(rows.length!==20)throw new LifecycleError('INVALID_D20_BOARD','D20 selection requires exactly 20 visible questions.');const assigned=(db.prepare('SELECT COUNT(*) count FROM episode_questions WHERE episode_id=? AND category_position<4 AND d20_value IS NOT NULL').get(episodeId)as any).count;if(assigned===20)return;const values=Array.from({length:20},(_,index)=>index+1);for(let index=values.length-1;index>0;index--){const other=crypto.randomInt(index+1);[values[index],values[other]]=[values[other],values[index]]}db.prepare('UPDATE episode_questions SET d20_value=NULL WHERE episode_id=?').run(episodeId);const update=db.prepare('UPDATE episode_questions SET d20_value=? WHERE episode_id=? AND question_id=?');rows.forEach((row,index)=>update.run(values[index],episodeId,row.question_id))}
+export const ensureD20QuestionMapping=ensureQuestionMapping;
 const defaultEffects: D20Effect[] = [
   {
     key: "critical_failure",
@@ -600,12 +602,13 @@ export function executeD20Command(
             "QUESTION_ALREADY_ACTIVE",
             "Close the current question before selector mode rolls.",
           );
+        ensureQuestionMapping(input.episodeId);
         const allowed = settings.skippedEligible
           ? "('unopened','skipped')"
           : "('unopened')";
         const pool = db
           .prepare(
-            `SELECT eq.*,q.category FROM episode_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.episode_id=? AND eq.state IN ${allowed} ORDER BY eq.category_position,eq.difficulty`,
+            `SELECT eq.*,q.category FROM episode_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.episode_id=? AND eq.category_position<4 AND eq.state IN ${allowed} ORDER BY eq.category_position,eq.difficulty`,
           )
           .all(input.episodeId) as any[];
         if (!pool.length)
@@ -614,6 +617,7 @@ export function executeD20Command(
             "No eligible board questions remain.",
           );
         q = pool[randomInt(pool.length)];
+        result = Number(q.d20_value);
       } else {
         if (!e.active_question_id)
           throw new LifecycleError(
@@ -631,7 +635,8 @@ export function executeD20Command(
             "The active question is not eligible.",
           );
       }
-      result = randomInt(20) + 1;
+      if(mode !== "question_selector")result = randomInt(20) + 1;
+      if(result===undefined)throw new LifecycleError("D20_RESULT_MISSING","The D20 could not determine a result.");
       const effect =
           mode === "event_die" || result === 1 || result === 20 ? resolvedEffect(settings, result) : undefined,
         values = calc(q.difficulty * 100, effect, settings),

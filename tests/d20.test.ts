@@ -141,11 +141,12 @@ describe("selector fairness and authority", () => {
     const random = (max: number) => [7, 19][calls++] % max;
     const cid = crypto.randomUUID(),
       result = cmd("d20.roll", { mode: "question_selector" }, random, cid);
-    expect(result.result).toBe(20);
     const privateState = d20.getPrivateD20(id)!;
     expect(privateState.selectedQuestionId).toBe("D20-C2-D3");
+    const mapping:any=db.prepare("SELECT d20_value FROM episode_questions WHERE episode_id=? AND question_id='D20-C2-D3'").get(id);
+    expect(result.result).toBe(mapping.d20_value);
     const publicState = live.getPublicLiveState(id);
-    expect(publicState.d20?.result).toBe(20);
+    expect(publicState.d20?.result).toBe(mapping.d20_value);
     expect(JSON.stringify(publicState.d20)).not.toContain("D20-C2-D3");
     expect(JSON.stringify(publicState)).not.toContain(
       "Hidden D20 question 2/3",
@@ -166,7 +167,9 @@ describe("selector fairness and authority", () => {
     expect(live.getPublicLiveState(id).mode).toBe("question");
     expect(live.getPublicLiveState(id).question?.category).toBe("D20 Category 2");
     const selected:any=db.prepare("SELECT modifier_effect_key,effective_award_xp FROM episode_questions WHERE episode_id=? AND question_id='D20-C2-D3'").get(id);
-    expect(selected).toEqual({modifier_effect_key:"critical_hit",effective_award_xp:900});
+    expect(selected).toEqual(mapping.d20_value===20
+      ? {modifier_effect_key:"critical_hit",effective_award_xp:900}
+      : {modifier_effect_key:null,effective_award_xp:300});
   });
   it("excludes completed positions and current questions and reports empty inventory", () => {
     db.prepare("UPDATE episode_questions SET modifier_status='consumed' WHERE episode_id=? AND modifier_status='active'").run(id);

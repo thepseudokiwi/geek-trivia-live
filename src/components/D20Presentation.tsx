@@ -5,8 +5,8 @@ function boardRollPath(key:string){
   let seed=2166136261;
   for(const char of key)seed=Math.imul(seed^char.charCodeAt(0),16777619);
   const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296};
-  const point=(index:number)=>({[`--roll-x${index}`]:`${Math.round((random()-.5)*70)}vw`,[`--roll-y${index}`]:`${Math.round((random()-.5)*48)}vh`});
-  return{...point(1),...point(2),...point(3),...point(4),...point(5),...point(6)};
+  const direction=random()>.5?1:-1,start=direction*(32+Math.round(random()*10)),drift=(random()-.5)*12;
+  return{'--roll-start-x':`${start}vw`,'--roll-x2':`${start*.66+drift}vw`,'--roll-x3':`${start*.43+drift*.7}vw`,'--roll-x4':`${start*.25+drift*.4}vw`,'--roll-x5':`${start*.12}vw`,'--roll-x6':`${start*.045}vw`};
 }
 function dieRollSound(durationMs: number, result: number, volume: number) {
   try {

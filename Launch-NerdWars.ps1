@@ -26,6 +26,16 @@ if (-not (Test-NerdWarsPort -Port 8787)) {
     }
     if (-not $nodeCommand) { throw 'Node.js was not found on this computer.' }
 
+    $viteCommand = Join-Path $projectPath 'node_modules\vite\bin\vite.js'
+    if (-not (Test-Path -LiteralPath $viteCommand)) {
+        throw 'Nerd Wars dependencies are missing. Install the project dependencies first.'
+    }
+
+    # Build the current browser interface so Express can serve the whole platform
+    # alongside the API and WebSocket server on the single permanent port 8787.
+    & $nodeCommand $viteCommand build
+    if ($LASTEXITCODE -ne 0) { throw 'Nerd Wars browser build failed.' }
+
     Start-Process -FilePath $nodeCommand -ArgumentList '--import', 'tsx', 'server/index.ts' -WorkingDirectory $projectPath -WindowStyle Hidden
 
     $ready = $false

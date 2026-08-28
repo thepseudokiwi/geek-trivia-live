@@ -14,7 +14,7 @@ import { questionSchema } from '../shared/validation.js';
 import { addParticipant,adjustScore,completeEpisode,deleteDraft,duplicateEpisode,exportAll,getEpisode,LifecycleError,listEpisodes,randomizeLiveBoard,recentEpisodeIds,removeParticipant,renameParticipant,resetScores,restoreAll,saveEpisode,setQuestionState,startEpisode,transition } from './episodesRepository.js';
 import { executeLiveCommand,getPrivateLiveState,getPublicLiveState } from './liveRepository.js';
 import { attachLiveSockets } from './liveSocket.js';
-import { executeD20Command,exportD20Backup,getD20History,getD20Settings,restoreD20Backup,saveD20Settings,saveEpisodeD20Settings,scheduleD20QuestionReveal } from './d20Repository.js';
+import { ensureD20QuestionMapping,executeD20Command,exportD20Backup,getD20History,getD20Settings,restoreD20Backup,saveD20Settings,saveEpisodeD20Settings,scheduleD20QuestionReveal } from './d20Repository.js';
 import { createQuestion,deleteQuestion,duplicateQuestion,importQuestions,listQuestions,updateQuestion } from './questionsRepository.js';
 import { assetFile,deleteAsset,deleteProfile,duplicateProfile,executePresentationCommand,exportPresentationBackup,getPrivatePresentation,listAssets,listProfiles,listThemes,restorePresentationBackup,saveAsset,saveProfile,setEpisodePresentationTheme } from './presentationRepository.js';
 import { db } from './db/database.js';
@@ -59,7 +59,7 @@ app.put('/api/episodes/:id',wrap((q,r)=>r.json(saveEpisode({...q.body,id:q.param
 app.post('/api/episodes/:id/duplicate',wrap((q,r)=>r.status(201).json(duplicateEpisode(q.params.id))));
 app.delete('/api/episodes/:id',wrap((q,r)=>{deleteDraft(q.params.id);r.status(204).end()}));
 for(const[name,to]of Object.entries({lock:'locked',unlock:'draft',archive:'archived',restore:'completed'}))app.post(`/api/episodes/:id/${name}`,wrap((q,r)=>r.json(transition(q.params.id,to as any))));
-app.post('/api/episodes/:id/start',wrap((q,r)=>r.json(startEpisode(q.params.id))));
+app.post('/api/episodes/:id/start',wrap((q,r)=>{const episode=startEpisode(q.params.id);ensureD20QuestionMapping(q.params.id);r.json(episode)}));
 app.post('/api/episodes/:id/participants',wrap((q,r)=>r.status(201).json(addParticipant(q.params.id,q.body))));
 app.put('/api/episodes/:id/participants/:participantId',wrap((q,r)=>r.json(renameParticipant(q.params.id,q.params.participantId,q.body.displayName))));
 app.delete('/api/episodes/:id/participants/:participantId',wrap((q,r)=>r.json(removeParticipant(q.params.id,q.params.participantId))));
@@ -89,7 +89,7 @@ app.post('/api/live/:id/commands',wrap((q,r)=>{const command={...q.body,episodeI
 app.post('/api/live/:id/complete',wrap((q,r)=>{completeEpisode(q.params.id,Boolean(q.body.confirmIncomplete));db.prepare("UPDATE episodes SET public_display_mode='final',revision=revision+1 WHERE id=?").run(q.params.id);live.broadcast(q.params.id);r.json(getPublicLiveState(q.params.id))}));
 app.post('/api/live/:id/participants',wrap((q,r)=>{addParticipant(q.params.id,q.body);db.prepare('UPDATE episodes SET revision=revision+1 WHERE id=?').run(q.params.id);live.broadcast(q.params.id);r.status(201).json({ok:true})}));
 app.delete('/api/live/:id/participants/:participantId',wrap((q,r)=>{removeParticipant(q.params.id,q.params.participantId);db.prepare('UPDATE episodes SET revision=revision+1 WHERE id=?').run(q.params.id);live.broadcast(q.params.id);r.json({ok:true})}));
-app.post('/api/live/:id/randomize-board',wrap((q,r)=>{const episode=getEpisode(q.params.id),seed=crypto.randomUUID(),options=hydrate({...episode.options,seed,manualCategories:[]}),board=generateEpisode(listQuestions(),options);randomizeLiveBoard(q.params.id,board);live.broadcast(q.params.id);r.json(getPrivateLiveState(q.params.id,{role:'observer',controllerConnected:false,audienceCount:0}))}));
+app.post('/api/live/:id/randomize-board',wrap((q,r)=>{const episode=getEpisode(q.params.id),seed=crypto.randomUUID(),options=hydrate({...episode.options,seed,manualCategories:[]}),board=generateEpisode(listQuestions(),options);randomizeLiveBoard(q.params.id,board);ensureD20QuestionMapping(q.params.id);live.broadcast(q.params.id);r.json(getPrivateLiveState(q.params.id,{role:'observer',controllerConnected:false,audienceCount:0}))}));
 app.get('/api/episodes/:id/video-feeds',wrap((q,r)=>r.json(listVideoFeeds(q.params.id))));
 app.post('/api/episodes/:id/video-feeds',wrap((q,r)=>{const result=saveVideoFeed(q.params.id,q.body);live.broadcast(q.params.id);r.status(201).json(result)}));
 app.put('/api/episodes/:id/video-feeds/:feedId',wrap((q,r)=>{const result=saveVideoFeed(q.params.id,q.body,q.params.feedId);live.broadcast(q.params.id);r.json(result)}));
