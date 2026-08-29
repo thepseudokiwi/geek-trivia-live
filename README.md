@@ -23,7 +23,7 @@ The current SQLite show database remains authoritative until its full schema and
 Cloud setup requires these service-side steps:
 
 1. Create a Neon project and enable Neon Auth with email/password and Google.
-2. Apply `server/db/postgres/migrations/001_player_accounts.sql` with the Neon SQL editor or migration runner after enabling the Data API roles.
+2. Apply `server/db/postgres/migrations/001_player_accounts.sql`, enable Neon Auth and the Data API, then apply `002_player_access_policies.sql`. The second migration depends on the roles created by the Data API.
 3. Create an Upstash Redis database in the same region as the Vercel project.
 4. Import the GitHub repository into Vercel and add the values shown in `.env.production.example` as encrypted environment variables.
 5. Deploy a preview first, test registration and Google OAuth callback URLs, then rehearse the SQLite-to-Neon data import before production cutover.
