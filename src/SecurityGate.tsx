@@ -1,5 +1,6 @@
 import{useEffect,useState,type ReactNode}from'react';
-const publicView=()=>/^#(?:play(?:\/|$)|audience\/|theme-preview\/)/.test(location.hash);
+import{isPublicPlayerRoute}from'./routing';
+const publicView=()=>isPublicPlayerRoute();
 export function SecurityGate({children}:{children:ReactNode}){const[publicPage,setPublicPage]=useState(publicView),[status,setStatus]=useState<'loading'|'allowed'|'login'>('loading'),[username,setUsername]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState('');
  useEffect(()=>{const route=()=>setPublicPage(publicView());addEventListener('hashchange',route);return()=>removeEventListener('hashchange',route)},[]);
  useEffect(()=>{if(publicPage)return;fetch('/api/auth/session',{credentials:'same-origin'}).then(r=>r.json()).then(x=>setStatus(x.authenticated?'allowed':'login')).catch(()=>{setError('Unable to contact the Nerd Wars server.');setStatus('login')})},[publicPage]);

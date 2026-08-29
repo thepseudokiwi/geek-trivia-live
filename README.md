@@ -12,6 +12,22 @@ Build the client with `npm run build`, serve `dist/` through the reverse proxy, 
 
 Public routes are `/#play/JOINCODE`, `/#audience/EPISODE_ID`, and published or token-limited theme previews. Opening the root application, question library, episode tools, Theme Designer, or Host Console presents the host sign-in screen. Use **Sign out** after operating from a shared computer.
 
+## Player accounts and cloud deployment
+
+The cloud-ready player portal adds `/#open-play`, `/#account`, and Neon Auth screens under `/#auth/*`. Player accounts support email/password registration and Google sign-in while remaining separate from privileged host access. If `VITE_NEON_AUTH_URL` is absent, these pages show a safe setup message instead of attempting authentication against an invalid endpoint.
+
+Neon Postgres definitions for player profiles, open-play sessions, registrations, and game statistics are in `server/db/postgres/`. The migration uses row-level security so authenticated players can see or change only their own profile and registrations. A database trigger serializes seat claims and prevents concurrent registrations from exceeding capacity. The application server uses the pooled `DATABASE_URL`; migrations and administrative jobs use `DATABASE_URL_UNPOOLED`.
+
+The current SQLite show database remains authoritative until its full schema and data have been rehearsed against a separate Neon branch. Do not point production at Neon or delete the SQLite database before that rehearsal passes. Vercel Functions can host the HTTP application, but realtime show traffic also requires `REDIS_URL` for Upstash-backed cross-instance fan-out; in-memory WebSocket rooms are not safe across multiple function instances. When `REDIS_URL` is set, episode changes publish a minimal invalidation message so sockets attached to other instances reload the authoritative state.
+
+Cloud setup requires these service-side steps:
+
+1. Create a Neon project and enable Neon Auth with email/password and Google.
+2. Apply `server/db/postgres/migrations/001_player_accounts.sql` with the Neon SQL editor or migration runner after enabling the Data API roles.
+3. Create an Upstash Redis database in the same region as the Vercel project.
+4. Import the GitHub repository into Vercel and add the values shown in `.env.production.example` as encrypted environment variables.
+5. Deploy a preview first, test registration and Google OAuth callback URLs, then rehearse the SQLite-to-Neon data import before production cutover.
+
 ## Architecture
 
 - `src/`: React 19 + strict TypeScript + Vite interface. It contains the Question Library and minimal Episode Builder.
