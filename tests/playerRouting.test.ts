@@ -6,12 +6,14 @@ describe('player routes', () => {
     expect(parseHashRoute('#account')).toEqual({ page: 'account', id: undefined });
     expect(parseHashRoute('#auth/reset-password?token=secret')).toEqual({ page: 'auth', id: 'reset-password' });
     expect(parseHashRoute('#open-play')).toEqual({ page: 'open-play', id: undefined });
+    expect(parseHashRoute('#admin')).toEqual({ page: 'admin', id: undefined });
   });
 
   it('does not make host and administrative pages public', () => {
     expect(isPublicPlayerRoute('#auth/sign-in')).toBe(true);
     expect(isPublicPlayerRoute('#account')).toBe(true);
     expect(isPublicPlayerRoute('#open-play')).toBe(true);
+    expect(isPublicPlayerRoute('#admin')).toBe(true);
     expect(isPublicPlayerRoute('#host/episode-1')).toBe(false);
     expect(isPublicPlayerRoute('#episodes')).toBe(false);
   });
@@ -21,6 +23,7 @@ describe('player routes', () => {
     expect(authHrefToHash('/forgot-password', 'https://nerdwars.example')).toBe('#auth/forgot-password');
     expect(authHrefToHash('/reset-password?token=secret', 'https://nerdwars.example')).toBe('?token=secret#auth/reset-password');
     expect(authHrefToHash('/account', 'https://nerdwars.example')).toBe('#account');
+    expect(authHrefToHash('/admin', 'https://nerdwars.example')).toBe('#admin');
     expect(authHrefToHash('https://example.org/help', 'https://nerdwars.example')).toBe('https://example.org/help');
   });
 });

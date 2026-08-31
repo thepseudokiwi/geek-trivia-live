@@ -3,6 +3,15 @@ import { boolean, index, integer, pgEnum, pgTable, primaryKey, text, timestamp, 
 
 export const openPlayStatus = pgEnum('open_play_status', ['scheduled', 'open', 'closed', 'cancelled']);
 export const registrationStatus = pgEnum('open_play_registration_status', ['registered', 'checked_in', 'withdrawn']);
+export const accountRole = pgEnum('account_role', ['player', 'host', 'administrator']);
+
+export const accountRoles = pgTable('account_roles', {
+  authUserId: text('auth_user_id').primaryKey(),
+  role: accountRole('role').notNull(),
+  grantedBy: text('granted_by'),
+  grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const playerProfiles = pgTable('player_profiles', {
   authUserId: text('auth_user_id').primaryKey(),

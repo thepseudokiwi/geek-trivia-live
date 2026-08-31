@@ -10,7 +10,8 @@ export type AppPage =
   | 'theme-preview'
   | 'account'
   | 'auth'
-  | 'open-play';
+  | 'open-play'
+  | 'admin';
 
 export type AppView = { page: AppPage; id?: string };
 
@@ -27,6 +28,7 @@ const pages: ReadonlySet<string> = new Set<AppPage>([
   'account',
   'auth',
   'open-play',
+  'admin',
 ]);
 
 export function parseHashRoute(hash = location.hash): AppView {
@@ -38,13 +40,13 @@ export function parseHashRoute(hash = location.hash): AppView {
 }
 
 export function isPublicPlayerRoute(hash = location.hash): boolean {
-  return /^#(?:play(?:\/|$)|audience\/|theme-preview\/|account(?:\/|$)|auth\/|open-play(?:\/|$))/.test(hash);
+  return /^#(?:play(?:\/|$)|audience\/|theme-preview\/|account(?:\/|$)|auth\/|open-play(?:\/|$)|admin(?:\/|$))/.test(hash);
 }
 
 export function authHrefToHash(href: string, origin = location.origin): string {
   const url = new URL(href, origin);
   const path = url.pathname.replace(/^\/+/, '');
-  if (path === 'account' || path === 'open-play' || path.startsWith('auth/')) {
+  if (path === 'account' || path === 'open-play' || path === 'admin' || path.startsWith('auth/')) {
     return `${url.search}#${path}`;
   }
   if (/^(?:callback|email-otp|email-verification|forgot-password|magic-link|recover-account|reset-password|sign-in|sign-out|sign-up|two-factor|accept-invitation)$/.test(path)) {

@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { playerAuthClient, playerAuthConfigured } from '../lib/playerAuth';
+import { getMyRole, type AccountRole } from '../lib/playerRoles';
 import { PlayerHeader } from './PlayerAuth';
 
 export function PlayerAccount() {
@@ -8,6 +10,12 @@ export function PlayerAccount() {
 
 function ConnectedAccount() {
   const session = playerAuthClient!.useSession();
+  const [role, setRole] = useState<AccountRole>('player');
+  const userId = session.data?.user?.id;
+  useEffect(() => {
+    if (!userId) { setRole('player'); return; }
+    void getMyRole(userId).then(setRole).catch(() => setRole('player'));
+  }, [userId]);
   if (session.isPending) {
     return <PlayerPageStatus message="Loading your player account…" />;
   }
@@ -48,6 +56,8 @@ function ConnectedAccount() {
         <p>When the host opens a session, it will appear here.</p>
         <a className="player-button" href="#open-play">Browse open play</a>
       </section>
+      {role === 'administrator' && <section className="player-card player-admin-callout"><p className="eyebrow">Administrator</p><h2>System access</h2><p>Grant or remove Host access and manage system administrators.</p><a className="player-button" href="#admin">Manage access</a></section>}
+      {role === 'host' && <section className="player-card player-admin-callout"><p className="eyebrow">Host account</p><h2>Host access granted</h2><p>Your account is approved for Host controls. Cloud show-control access will appear here when the live backend is connected.</p></section>}
       <button className="player-text-button" onClick={() => void playerAuthClient!.signOut()}>Sign out</button>
     </main>
   );

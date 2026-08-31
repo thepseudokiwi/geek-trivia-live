@@ -14,6 +14,7 @@ import { parseHashRoute, type AppPage, type AppView } from './routing';
 const OpenPlay = lazy(() => import('./pages/OpenPlay').then((module) => ({ default: module.OpenPlay })));
 const PlayerAccount = lazy(() => import('./pages/PlayerAccount').then((module) => ({ default: module.PlayerAccount })));
 const PlayerAuth = lazy(() => import('./pages/PlayerAuth').then((module) => ({ default: module.PlayerAuth })));
+const RoleAdmin = lazy(() => import('./pages/RoleAdmin').then((module) => ({ default: module.RoleAdmin })));
 const playerPage = (content: React.ReactNode) => <Suspense fallback={<main className="player-shell"><p>Loading Nerd Wars…</p></main>}>{content}</Suspense>;
 
 export default function App() {
@@ -32,7 +33,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const backend = !['play', 'audience', 'theme-preview', 'account', 'auth', 'open-play'].includes(view.page);
+    const backend = !['play', 'audience', 'theme-preview', 'account', 'auth', 'open-play', 'admin'].includes(view.page);
     document.body.classList.toggle('backend-dark', dark && backend);
     document.body.classList.toggle('host-dark', dark && view.page === 'host');
     return () => document.body.classList.remove('backend-dark', 'host-dark');
@@ -59,6 +60,7 @@ export default function App() {
   if (view.page === 'account') return playerPage(<PlayerAccount />);
   if (view.page === 'auth') return playerPage(<PlayerAuth path={view.id} />);
   if (view.page === 'open-play') return playerPage(<OpenPlay />);
+  if (view.page === 'admin') return playerPage(<RoleAdmin />);
 
   return (
     <>
