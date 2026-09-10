@@ -18,7 +18,7 @@ export function parseRealtimeSignal(raw: string): RealtimeSignal | null {
 }
 
 export function createRedisSignalBus(onEpisodeInvalidated: (episodeId: string) => void) {
-  const redisUrl = process.env.REDIS_URL?.trim();
+  const redisUrl = (process.env.BETA_REDIS_URL ?? process.env.REDIS_URL)?.trim();
   if (!redisUrl) return null;
 
   const source = crypto.randomUUID();
