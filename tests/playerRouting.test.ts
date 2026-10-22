@@ -13,7 +13,8 @@ describe('player routes', () => {
     expect(isPublicPlayerRoute('#auth/sign-in')).toBe(true);
     expect(isPublicPlayerRoute('#account')).toBe(true);
     expect(isPublicPlayerRoute('#open-play')).toBe(true);
-    expect(isPublicPlayerRoute('#admin')).toBe(true);
+    expect(isPublicPlayerRoute('#admin')).toBe(false);
+    expect(isPublicPlayerRoute('#admin-setup/private-token')).toBe(true);
     expect(isPublicPlayerRoute('#host/episode-1')).toBe(false);
     expect(isPublicPlayerRoute('#episodes')).toBe(false);
   });

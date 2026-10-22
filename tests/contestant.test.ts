@@ -2,6 +2,18 @@ import{beforeAll,afterAll,describe,expect,it}from'vitest';import{execFileSync}fr
 const file=path.resolve(`data/test-contestant-${process.pid}.db`);let repo:any,db:any,episodeId='DEMO-EP-RUN',joins:any[]=[];
 beforeAll(async()=>{execFileSync(process.execPath,['--import','tsx','server/db/migrate.ts'],{cwd:process.cwd(),env:{...process.env,DATABASE_PATH:file}});execFileSync(process.execPath,['--import','tsx','server/db/seed.ts'],{cwd:process.cwd(),env:{...process.env,DATABASE_PATH:file}});process.env.DATABASE_PATH=file;repo=await import('../server/contestantRepository.js');db=(await import('../server/db/database.js')).db;repo.openJoinSession(episodeId,{pin:'2468',maxParticipants:8});const code=repo.getJoinSession(episodeId).joinCode;for(const name of['Nova','Rune','Pixel','Comet'])joins.push(repo.joinContestant({joinCode:code,displayName:name,pin:'2468'},name))});afterAll(()=>{db.close();fs.unlinkSync(file)});
 describe('contestant experience',()=>{
+ it('sends only published player colors to contestants',async()=>{
+  const themes=await import('../server/themeDesignerRepository.js');
+  const presentation=await import('../server/presentationRepository.js');
+  const themeId=presentation.getPublicPresentation(episodeId).theme.id;
+  const theme=themes.getDesignerTheme(themeId),draft=structuredClone(theme.draft);
+  draft.playerScreen={enabled:true,background:'#113355',nameText:'#eeeeee',xpText:'#ffcc00',divider:'#446688'};
+  themes.saveThemeDraft(themeId,draft);
+  expect(repo.getContestantState(joins[0].token).playerScreen).not.toEqual(draft.playerScreen);
+  themes.publishTheme(themeId,{});
+  expect(repo.getContestantState(joins[0].token).playerScreen).toEqual(draft.playerScreen);
+ });
+ it('identifies the public audience display for the player theme view',()=>{expect(repo.getContestantState(joins[0].token).episodeId).toBe(episodeId)});
  it('uses generic errors, validates names and stores only token hashes',()=>{expect(()=>repo.joinContestant({joinCode:'BADCODE',displayName:'X'})).toThrow(/Unable to join/);expect(()=>repo.joinContestant({joinCode:repo.getJoinSession(episodeId).joinCode,displayName:'<script>',pin:'2468'})).toThrow();const raw=joins[0].token,row=db.prepare('SELECT token_hash FROM contestant_sessions WHERE display_name=?').get('Nova');expect(row.token_hash).not.toContain(raw);expect(row.token_hash).toMatch(/^[a-f0-9]{64}$/)});
  it('publishes a sanitized join graphic without internal episode identifiers',()=>{repo.showJoinGraphic(episodeId,'http://trivia.local/#play/old');const row=db.prepare("SELECT public_payload_json FROM graphic_overlays WHERE episode_id=? AND graphic_type='contestant-join' AND visible=1").get(episodeId)as any,text=JSON.parse(row.public_payload_json).text;expect(text).toContain(repo.getJoinSession(episodeId).joinCode);expect(text).not.toContain(episodeId);expect(text).not.toContain('pin')});
  it('toggles readiness only during a host ready check',()=>{expect(()=>repo.contestantReady(joins[0].token,true)).toThrow(/closed/);repo.setReadyCheck(episodeId,true,true);expect(repo.contestantReady(joins[0].token,true).ready).toBe(true);expect(repo.getHostContestantState(episodeId).contestants.find((x:any)=>x.displayName==='Nova').ready).toBe(true)});

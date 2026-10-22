@@ -2,7 +2,7 @@ import type { Question } from '../../../shared/types.js';
 import type { QuestionFilters } from '../../questionsRepository.js';
 import { gameQuery, gameTransaction } from './gameStore.js';
 
-function question(row: any): Question {
+export function questionFromRow(row: any): Question {
   return { id: row.id, category: row.category, subcategory: row.subcategory,
     difficulty: row.difficulty, pointValue: row.difficulty * 100,
     questionText: row.question_text, correctAnswer: row.correct_answer,
@@ -24,27 +24,34 @@ export async function listQuestions(filters: QuestionFilters = {}): Promise<Ques
   if (filters.active !== undefined) clauses.push(`active=${parameter(Number(filters.active))}`);
   if (filters.usage) clauses.push(filters.usage === 'used' ? 'used_count>0' : 'used_count=0');
   const rows = await gameQuery(`SELECT * FROM questions ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''} ORDER BY category,difficulty,id`, values);
-  return rows.map(question);
+  return rows.map(questionFromRow);
 }
 export async function getQuestion(id: string) {
   const [row] = await gameQuery('SELECT * FROM questions WHERE id=$1', [id]);
-  return row ? question(row) : undefined;
+  return row ? questionFromRow(row) : undefined;
 }
 const columns = 'id,category,subcategory,difficulty,point_value,question_text,correct_answer,alternate_answers,question_type,media_path,host_notes,source,active,used_count,date_last_used,episode_last_used'.split(',');
 const values = (q: Question) => [q.id,q.category,q.subcategory,q.difficulty,q.difficulty*100,q.questionText,q.correctAnswer,JSON.stringify(q.alternateAnswers),q.questionType,q.mediaPath,q.hostNotes,q.source,Number(q.active),q.usedCount,q.dateLastUsed,q.episodeLastUsed];
 export async function createQuestion(q: Question) {
   const [row] = await gameQuery(`INSERT INTO questions (${columns.join(',')}) VALUES (${columns.map((_, i) => `$${i+1}`).join(',')}) RETURNING *`, values(q));
-  return question(row);
+  return questionFromRow(row);
 }
 export async function updateQuestion(id: string, q: Question) {
   if (id !== q.id) throw new Error('Question ID cannot be changed.');
   const assignments = columns.slice(1).map((name, i) => `${name}=$${i+1}`);
   const [row] = await gameQuery(`UPDATE questions SET ${assignments.join(',')},updated_at=CURRENT_TIMESTAMP::text WHERE id=$16 RETURNING *`, [...values(q).slice(1),id]);
   if (!row) throw new Error('Question not found.');
-  return question(row);
+  return questionFromRow(row);
 }
 export async function deleteQuestion(id: string) {
   return (await gameQuery('DELETE FROM questions WHERE id=$1 RETURNING id', [id])).length > 0;
+}
+export async function duplicateQuestion(id: string, newId: string) {
+  return gameTransaction(async () => {
+    const source = await getQuestion(id);
+    if (!source) throw new Error('Question not found.');
+    return createQuestion({ ...source, id: newId, usedCount: 0, dateLastUsed: null, episodeLastUsed: null });
+  });
 }
 export async function importQuestions(items: Question[]) {
   return gameTransaction(async () => {

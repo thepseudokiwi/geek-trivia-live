@@ -1,36 +1,336 @@
-import{useEffect,useMemo,useRef}from'react';
-import{Canvas,useFrame,useLoader}from'@react-three/fiber';
-import{GLTFLoader}from'three/examples/jsm/loaders/GLTFLoader.js';
-import*as THREE from'three';
-import type{D20Theme}from'../../shared/types';
+import { useEffect, useMemo, useRef } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+import type { D20Theme } from '../../shared/types';
 
-// Centers of the numbered islands in the model's baked UV atlas. Image Y is
-// flipped to WebGL UV space. The normals recovered from these islands let the
-// authored number—not an unrelated overlay—land facing the camera.
-const atlas:Array<[number,number,number]>=[
- [16,.094,.925],[10,.241,.925],
- [18,.544,.878],[17,.713,.878],[1,.881,.878],
- [12,.544,.719],[20,.713,.719],[2,.881,.719],
- [14,.544,.575],[9,.713,.575],[3,.881,.575],
- [19,.544,.394],[15,.713,.394],[8,.881,.394],
- [5,.544,.231],[7,.713,.231],[13,.881,.231],
- [4,.544,.087],[6,.713,.087],[11,.881,.087],
-];
-function numberedNormals(root:THREE.Object3D){
- const best=new Map<number,{distance:number;area:number;normal:THREE.Vector3}>();root.updateMatrixWorld(true);
- root.traverse(object=>{if(!(object instanceof THREE.Mesh))return;const geometry=object.geometry as THREE.BufferGeometry,position=geometry.getAttribute('position'),uv=geometry.getAttribute('uv'),index=geometry.index;if(!position||!uv)return;const count=index?index.count:position.count;
-  for(let offset=0;offset<count;offset+=3){const ids=[0,1,2].map(step=>index?index.getX(offset+step):offset+step),points=ids.map(id=>new THREE.Vector3(position.getX(id),position.getY(id),position.getZ(id)).applyMatrix4(object.matrixWorld)),uvs=ids.map(id=>new THREE.Vector2(uv.getX(id),uv.getY(id))),center=uvs[0].clone().add(uvs[1]).add(uvs[2]).divideScalar(3);let nearest=atlas[0],distance=Infinity;for(const candidate of atlas){const d=(center.x-candidate[1])**2+(center.y-candidate[2])**2;if(d<distance){distance=d;nearest=candidate}}if(distance>.025)return;const cross=points[1].clone().sub(points[0]).cross(points[2].clone().sub(points[0])),area=cross.length()/2;if(area<1e-7)return;const previous=best.get(nearest[0]);if(!previous||distance<previous.distance*.75||distance<previous.distance*1.2&&area>previous.area)best.set(nearest[0],{distance,area,normal:cross.normalize()});
+type Face = {
+  normal: THREE.Vector3;
+  center: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+};
+
+type SimulationState = {
+  startedAt: number;
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+  angularVelocity: THREE.Vector3;
+  settlePosition: THREE.Vector3 | null;
+  settleQuaternion: THREE.Quaternion | null;
+  finalQuaternion: THREE.Quaternion;
+};
+
+const FLOOR_Y = -1.72;
+const LEFT_WALL = -4.35;
+const RIGHT_WALL = 4.35;
+const SETTLE_START = 0.72;
+
+function faceData() {
+  const geometry = new THREE.IcosahedronGeometry(1, 0).toNonIndexed();
+  const position = geometry.getAttribute('position');
+  const faces: Face[] = [];
+
+  for (let i = 0; i < position.count; i += 3) {
+    const a = new THREE.Vector3().fromBufferAttribute(position, i);
+    const b = new THREE.Vector3().fromBufferAttribute(position, i + 1);
+    const c = new THREE.Vector3().fromBufferAttribute(position, i + 2);
+    const center = a.clone().add(b).add(c).divideScalar(3);
+    const normal = center.clone().normalize();
+    faces.push({
+      center: center.multiplyScalar(1.012),
+      normal,
+      quaternion: new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 0, 1),
+        normal,
+      ),
+    });
   }
- });
- return Array.from({length:20},(_,index)=>best.get(index+1)?.normal??new THREE.Vector3(0,0,1));
+
+  geometry.dispose();
+  return faces;
 }
 
-function Die({result,durationMs,onLanded}:{result:number;theme:D20Theme;durationMs:number;onLanded:()=>void}){
- const gltf=useLoader(GLTFLoader,'/models/D20.glb'),group=useRef<THREE.Group>(null),started=useRef(performance.now()),reported=useRef(false),model=useMemo(()=>{const clone=gltf.scene.clone(true),box=new THREE.Box3().setFromObject(clone),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3()),scale=2/Math.max(size.x,size.y,size.z);clone.position.sub(center);clone.scale.multiplyScalar(scale);clone.traverse(object=>{if(object instanceof THREE.Mesh){object.castShadow=true;object.receiveShadow=true;const multiple=Array.isArray(object.material),sources:THREE.Material[]=multiple?object.material:[object.material],materials=sources.map(source=>{const material=source.clone();if(material instanceof THREE.MeshStandardMaterial){material.color.set('#ffffff');if(material.map){material.map.colorSpace=THREE.SRGBColorSpace;material.map.anisotropy=8}if(material.normalMap){material.normalMap.colorSpace=THREE.NoColorSpace;material.normalMap.anisotropy=8}material.needsUpdate=true}return material});object.material=multiple?materials:materials[0]}});return clone},[gltf.scene]),normals=useMemo(()=>numberedNormals(gltf.scene),[gltf.scene]),target=useMemo(()=>new THREE.Quaternion().setFromUnitVectors(normals[result-1],new THREE.Vector3(0,0,1)),[normals,result]),turns=4+(result%3),direction=result%2?1:-1,spinAxis=useMemo(()=>new THREE.Vector3(.72*direction,1,.48).normalize(),[direction]),settleStart=.78,tumbleAt=(progress:number)=>{const decay=(1-Math.exp(-2.15*progress))/(1-Math.exp(-2.15)),angle=(turns*2.35+.7)*Math.PI*2*decay;return new THREE.Quaternion().setFromAxisAngle(spinAxis,angle)},settleQuaternion=useMemo(()=>tumbleAt(settleStart),[spinAxis,turns]);
- useEffect(()=>{started.current=performance.now();reported.current=false},[result,durationMs]);
- useFrame(()=>{if(!group.current)return;const raw=Math.min(1,(performance.now()-started.current)/Math.max(1,durationMs)),impacts=[0,.24,.46,.65,.8,.91,1],heights=[.95,.56,.3,.14,.055,.01],found=impacts.findIndex((time,index)=>index>0&&raw<=time),segment=Math.max(0,Math.min(heights.length-1,found-1)),start=impacts[segment],end=impacts[segment+1],local=Math.max(0,Math.min(1,(raw-start)/(end-start))),ballistic=4*heights[segment]*local*(1-local),settle=Math.max(0,Math.min(1,(raw-settleStart)/(1-settleStart))),smooth=settle*settle*(3-2*settle),ground=-.52*(1-smooth),startX=direction*(1.55+(result%4)*.06),impactDistance=Math.min(...impacts.slice(1).map(time=>Math.abs(raw-time))),compression=Math.max(0,1-impactDistance/.014)*(1-raw)*.075;group.current.position.set(startX*Math.pow(1-raw,1.35),ground+ballistic,0);if(raw<settleStart)group.current.quaternion.copy(tumbleAt(raw));else group.current.quaternion.copy(settleQuaternion).slerp(target,smooth);group.current.scale.set(1+compression*.45,1-compression,1+compression*.45);if(raw===1&&!reported.current){reported.current=true;onLanded()}});
- return <group ref={group}><primitive object={model}/></group>
+function numberTexture(value: number, color: string) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = color;
+  ctx.font = '900 116px system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#000';
+  ctx.shadowBlur = 10;
+  ctx.fillText(String(value), 128, 136);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
 }
 
-useLoader.preload(GLTFLoader,'/models/D20.glb');
-export function D20Three({result,theme,durationMs,onLanded}:{result:number;theme:D20Theme;durationMs:number;onLanded:()=>void}){return <div className="d20-three" role="img" aria-label={`D20 result ${result}`}><Canvas dpr={[1,2]} camera={{position:[0,0,4.6],fov:42}} shadows gl={{alpha:true,antialias:true,powerPreference:'high-performance',toneMapping:THREE.ACESFilmicToneMapping,toneMappingExposure:1.35}} fallback={null}><ambientLight intensity={1.7}/><hemisphereLight args={['#ffffff','#251234',2.4]}/><directionalLight position={[4,5,6]} intensity={3.2}/><pointLight position={[-4,-2,3]} intensity={2.2} color="#67e8f9"/><Die result={result} theme={theme} durationMs={durationMs} onLanded={onLanded}/></Canvas></div>}
+const palettes: Record<
+  D20Theme,
+  { surface: string; edge: string; number: string; emissive: string }
+> = {
+  neon_arcane: {
+    surface: '#4c1d95',
+    edge: '#c084fc',
+    number: '#fff7c2',
+    emissive: '#5b21b6',
+  },
+  classic_polyhedral: {
+    surface: '#6b451f',
+    edge: '#e8c27a',
+    number: '#fff4d6',
+    emissive: '#2a1708',
+  },
+  holographic_scifi: {
+    surface: '#063b52',
+    edge: '#67e8f9',
+    number: '#e6feff',
+    emissive: '#075985',
+  },
+};
+
+function seededRandom(seedText: string) {
+  let seed = 2166136261;
+  for (const char of seedText) {
+    seed ^= char.charCodeAt(0);
+    seed = Math.imul(seed, 16777619);
+  }
+  return () => {
+    seed += 0x6d2b79f5;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function buildSimulation(result: number, rollKey: string, faces: Face[]): SimulationState {
+  const random = seededRandom(`${rollKey}:${result}`);
+  const target = new THREE.Quaternion().setFromUnitVectors(
+    faces[result - 1].normal,
+    new THREE.Vector3(0, 0, 1),
+  );
+  const finalYaw = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 0, 1),
+    (random() - 0.5) * Math.PI * 1.4,
+  );
+  const finalQuaternion = finalYaw.multiply(target);
+
+  return {
+    startedAt: performance.now(),
+    position: new THREE.Vector3(-3.6 + random() * 1.2, 2.45 + random() * 0.75, 0),
+    velocity: new THREE.Vector3(5.2 + random() * 2.1, 2.1 + random() * 1.7, 0),
+    quaternion: new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(random() * Math.PI, random() * Math.PI, random() * Math.PI),
+    ),
+    angularVelocity: new THREE.Vector3(
+      9 + random() * 8,
+      11 + random() * 9,
+      8 + random() * 7,
+    ),
+    settlePosition: null,
+    settleQuaternion: null,
+    finalQuaternion,
+  };
+}
+
+function rotateByAngularVelocity(
+  quaternion: THREE.Quaternion,
+  angularVelocity: THREE.Vector3,
+  dt: number,
+) {
+  const speed = angularVelocity.length();
+  if (speed < 0.0001) return;
+  const delta = new THREE.Quaternion().setFromAxisAngle(
+    angularVelocity.clone().normalize(),
+    speed * dt,
+  );
+  quaternion.premultiply(delta).normalize();
+}
+
+function Die({
+  result,
+  theme,
+  durationMs,
+  rollKey,
+  onLanded,
+}: {
+  result: number;
+  theme: D20Theme;
+  durationMs: number;
+  rollKey: string;
+  onLanded: () => void;
+}) {
+  const group = useRef<THREE.Group>(null);
+  const shadow = useRef<THREE.Mesh>(null);
+  const reported = useRef(false);
+  const faces = useMemo(faceData, []);
+  const palette = palettes[theme];
+  const textures = useMemo(
+    () => faces.map((_, index) => numberTexture(index + 1, palette.number)),
+    [faces, palette.number],
+  );
+  const simulation = useRef(buildSimulation(result, rollKey, faces));
+
+  useEffect(() => {
+    simulation.current = buildSimulation(result, rollKey, faces);
+    reported.current = false;
+  }, [faces, result, rollKey]);
+
+  useEffect(
+    () => () => {
+      textures.forEach((texture) => texture.dispose());
+    },
+    [textures],
+  );
+
+  useFrame((_, frameDelta) => {
+    const die = group.current;
+    if (!die) return;
+
+    const sim = simulation.current;
+    const raw = Math.min(
+      1,
+      (performance.now() - sim.startedAt) / Math.max(1, durationMs),
+    );
+
+    if (raw < SETTLE_START) {
+      const dt = Math.min(frameDelta, 1 / 30);
+      sim.velocity.y -= 9.8 * dt;
+      sim.position.addScaledVector(sim.velocity, dt);
+      rotateByAngularVelocity(sim.quaternion, sim.angularVelocity, dt);
+
+      if (sim.position.x <= LEFT_WALL || sim.position.x >= RIGHT_WALL) {
+        sim.position.x = THREE.MathUtils.clamp(sim.position.x, LEFT_WALL, RIGHT_WALL);
+        sim.velocity.x *= -0.72;
+        sim.angularVelocity.multiplyScalar(0.92);
+      }
+
+      if (sim.position.y <= FLOOR_Y) {
+        sim.position.y = FLOOR_Y;
+        sim.velocity.y = Math.abs(sim.velocity.y) * 0.48;
+        sim.velocity.x *= 0.82;
+        sim.angularVelocity.multiplyScalar(0.76);
+        sim.angularVelocity.z += sim.velocity.x * 0.16;
+      }
+    } else {
+      if (!sim.settlePosition) {
+        sim.settlePosition = sim.position.clone();
+        sim.settleQuaternion = sim.quaternion.clone();
+      }
+      const settleRaw = (raw - SETTLE_START) / (1 - SETTLE_START);
+      const ease = 1 - Math.pow(1 - settleRaw, 4);
+      const hop = Math.sin(settleRaw * Math.PI * 2.2) * (1 - ease) * 0.2;
+      sim.position.lerpVectors(
+        sim.settlePosition,
+        new THREE.Vector3(0, -0.08, 0),
+        ease,
+      );
+      sim.position.y += hop;
+      sim.quaternion.slerpQuaternions(
+        sim.settleQuaternion!,
+        sim.finalQuaternion,
+        ease,
+      );
+    }
+
+    die.position.copy(sim.position);
+    die.quaternion.copy(sim.quaternion);
+
+    if (shadow.current) {
+      const height = Math.max(0, sim.position.y - FLOOR_Y);
+      const scale = 0.82 + Math.min(1.3, height * 0.18);
+      shadow.current.position.x = sim.position.x;
+      shadow.current.scale.set(scale, 0.45 * scale, 1);
+      const material = shadow.current.material as THREE.MeshBasicMaterial;
+      material.opacity = THREE.MathUtils.clamp(0.34 - height * 0.055, 0.08, 0.34);
+    }
+
+    if (raw >= 1 && !reported.current) {
+      reported.current = true;
+      onLanded();
+    }
+  });
+
+  return (
+    <>
+      <mesh ref={shadow} position={[0, FLOOR_Y - 0.76, -0.35]} renderOrder={0}>
+        <circleGeometry args={[0.78, 40]} />
+        <meshBasicMaterial color="#000000" transparent opacity={0.28} depthWrite={false} />
+      </mesh>
+      <group ref={group}>
+        <mesh>
+          <icosahedronGeometry args={[1, 0]} />
+          <meshStandardMaterial
+            color={palette.surface}
+            emissive={palette.emissive}
+            emissiveIntensity={0.32}
+            metalness={0.52}
+            roughness={0.28}
+            flatShading
+          />
+        </mesh>
+        {faces.map((face, index) => (
+          <mesh
+            key={index}
+            position={face.center}
+            quaternion={face.quaternion}
+            renderOrder={2}
+          >
+            <planeGeometry args={[0.48, 0.48]} />
+            <meshBasicMaterial
+              map={textures[index]}
+              transparent
+              depthWrite={false}
+              polygonOffset
+              polygonOffsetFactor={-3}
+            />
+          </mesh>
+        ))}
+        <lineSegments>
+          <edgesGeometry args={[new THREE.IcosahedronGeometry(1.002, 0)]} />
+          <lineBasicMaterial color={palette.edge} />
+        </lineSegments>
+      </group>
+    </>
+  );
+}
+
+export function D20Three({
+  result,
+  theme,
+  durationMs,
+  rollKey,
+  onLanded,
+}: {
+  result: number;
+  theme: D20Theme;
+  durationMs: number;
+  rollKey: string;
+  onLanded: () => void;
+}) {
+  return (
+    <div className="d20-three" role="img" aria-label={`D20 result ${result}`}>
+      <Canvas
+        dpr={[1, 2]}
+        camera={{ position: [0, 0, 8.4], fov: 42 }}
+        gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
+        fallback={null}
+      >
+        <ambientLight intensity={1.2} />
+        <directionalLight position={[4, 5, 6]} intensity={3.2} />
+        <pointLight position={[-4, -2, 3]} intensity={2.2} color="#67e8f9" />
+        <Die
+          result={result}
+          theme={theme}
+          durationMs={durationMs}
+          rollKey={rollKey}
+          onLanded={onLanded}
+        />
+      </Canvas>
+    </div>
+  );
+}

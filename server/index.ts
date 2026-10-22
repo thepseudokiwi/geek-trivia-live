@@ -24,11 +24,13 @@ import { googleFontCatalog,installGoogleFont } from './googleFonts.js';
 import {deleteVideoFeed,exportVideoFeeds,listVideoFeeds,restoreVideoFeeds,saveVideoFeed} from './videoFeedRepository.js';
 import {apiRateLimit,authRoutes,requireAllowedOrigin,requireHostApi,securityHeaders}from'./security.js';
 import './db/migrate.js';
+import { adminAccountRoutes } from './adminAccountRoutes.js';
 
 // Seed the built-in presentation packages before either presentation API is queried.
 listThemes();
 const app=express();app.disable('x-powered-by');if(process.env.TRUST_PROXY)app.set('trust proxy',process.env.TRUST_PROXY==='true'?1:process.env.TRUST_PROXY);app.use(securityHeaders);app.use('/api',apiRateLimit);app.use('/api/presentation/assets',express.json({limit:'25mb'}));app.use('/api/restore',express.json({limit:'25mb'}));app.use(express.json({limit:'1mb'}));app.use(requireAllowedOrigin);authRoutes(app);app.use('/api',requireHostApi);
 const wrap=(fn:(q:any,r:any)=>unknown)=>(q:any,r:any,n:any)=>{try{Promise.resolve(fn(q,r)).catch(n)}catch(e){n(e)}};
+adminAccountRoutes(app);
 const filters=(q:any)=>({search:String(q.search??''),category:String(q.category??''),subcategory:String(q.subcategory??''),difficulty:q.difficulty?Number(q.difficulty):undefined,active:q.active===''||q.active===undefined?undefined:q.active==='true',usage:q.usage||undefined});
 const hydrate=(o:any)=>o.recentUsePolicy?.mode==='last-episodes'?{...o,recentUsePolicy:{...o.recentUsePolicy,recentEpisodeIds:recentEpisodeIds(o.recentUsePolicy.count)}}:o;
 

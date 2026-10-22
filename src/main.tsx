@@ -18,7 +18,7 @@ import './security.css';
 import './playerAccounts.css';
 
 const PlayerAuthProvider = lazy(() => import('./PlayerAuthProvider').then((module) => ({ default: module.PlayerAuthProvider })));
-const needsPlayerAccount = () => /^#(?:account(?:\/|$)|auth\/|open-play(?:\/|$)|admin(?:\/|$))/.test(location.hash);
+const needsPlayerAccount = () => ['account', 'auth', 'open-play'].includes(location.hash.slice(1).split('/')[0].split('?')[0]);
 
 function Root() {
   const [withPlayerAuth, setWithPlayerAuth] = useState(needsPlayerAccount);

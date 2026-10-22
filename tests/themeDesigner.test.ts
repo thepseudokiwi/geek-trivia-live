@@ -22,10 +22,14 @@ describe('Theme Designer drafts and publishing',()=>{
   it('saves and publishes versioned built-in customizations while protecting deletion',()=>{
     const builtIn=themes.getDesignerTheme('fantasy-codex'),draft=structuredClone(builtIn.draft);
     draft.global.radius=builtIn.draft.global.radius+1;
+    draft.glass={style:'frosted',blur:22,opacity:70};
+    draft.playerScreen={enabled:true,background:'#102030',nameText:'#eeeeee',xpText:'#ffcc00',divider:'#445566'};
     themes.saveThemeDraft(builtIn.id,draft);
     const published=themes.publishTheme(builtIn.id,{changeSummary:'Built-in customization'});
     expect(published.isBuiltin).toBe(true);
     expect(published.published.global.radius).toBe(draft.global.radius);
+    expect(published.published.glass).toEqual(draft.glass);
+    expect(published.published.playerScreen).toEqual(draft.playerScreen);
     expect(published.publishedVersion).toBe(builtIn.publishedVersion+1);
     expect(()=>themes.deleteDesignerTheme(builtIn.id)).toThrow(/cannot be deleted/i);
   });
@@ -84,6 +88,23 @@ describe('Theme Designer drafts and publishing',()=>{
     expect(()=>themes.previewTheme(copy.id,'invalid')).toThrow(/token/i);
     const issued=themes.issuePreviewToken(copy.id);
     expect(themes.previewTheme(copy.id,issued.token).config.colors.accent).toBe('#abcdef');
+  });
+
+  it('saves and publishes custom background images and protects their assets',()=>{
+    const asset=presentation.saveAsset({displayName:'Test Background',fileName:'background.png',mimeType:'image/png',assetType:'image',base64:Buffer.from([137,80,78,71,13,10,26,10,0]).toString('base64')});
+    const copy=themes.duplicateTheme('nerd-wars-classic','Background Test');
+    const draft=structuredClone(copy.draft);
+    draft.background={type:'image',assetId:asset.id,fit:'contain',position:'right',repeat:'no-repeat',opacity:1,blur:0,overlayColor:'#000000',overlayOpacity:.45};
+    themes.saveThemeDraft(copy.id,draft);
+    expect(themes.getDesignerTheme(copy.id).draft.background).toEqual(draft.background);
+    expect(themes.getDesignerTheme(copy.id).published.background.type).not.toBe('image');
+    expect(()=>presentation.deleteAsset(asset.id)).toThrow(/referenced/i);
+    const published=themes.publishTheme(copy.id,{changeSummary:'Custom background'});
+    expect(themes.themeTokensFromConfig(copy.id,published.published).designer?.background).toEqual(draft.background);
+    const exported=themes.exportTheme(copy.id);
+    expect(themes.importTheme(exported).draft.background).toEqual(draft.background);
+    draft.background.assetId='11111111-1111-4111-8111-111111111111';
+    expect(themes.validateTheme(draft).errors).toContainEqual(expect.objectContaining({path:'background.assetId'}));
   });
 
   it('publishes a custom logo and protects it while the theme references it',()=>{

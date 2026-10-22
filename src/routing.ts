@@ -11,7 +11,9 @@ export type AppPage =
   | 'account'
   | 'auth'
   | 'open-play'
-  | 'admin';
+  | 'admin'
+  | 'admin-setup';
+// Backend setup links are separate from player registration.
 
 export type AppView = { page: AppPage; id?: string };
 
@@ -29,6 +31,7 @@ const pages: ReadonlySet<string> = new Set<AppPage>([
   'auth',
   'open-play',
   'admin',
+  'admin-setup',
 ]);
 
 export function parseHashRoute(hash = location.hash): AppView {
@@ -40,7 +43,7 @@ export function parseHashRoute(hash = location.hash): AppView {
 }
 
 export function isPublicPlayerRoute(hash = location.hash): boolean {
-  return /^#(?:play(?:\/|$)|audience\/|theme-preview\/|account(?:\/|$)|auth\/|open-play(?:\/|$)|admin(?:\/|$))/.test(hash);
+  return /^#(?:play(?:\/|$)|audience\/|theme-preview\/|account(?:\/|$)|auth\/|open-play(?:\/|$)|admin-setup(?:\/|$))/.test(hash);
 }
 
 export function authHrefToHash(href: string, origin = location.origin): string {

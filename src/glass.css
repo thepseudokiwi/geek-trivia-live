@@ -1,0 +1,18 @@
+/* Opt-in per theme; text and gameplay highlights remain fully opaque. */
+.presentation[data-glass]:not([data-glass="off"]) :is(.audience-board h2, .audience-square:not(.natural20-selected), .broadcast-question, .answer-reveal, .standings li, .score-bug li, .production-team-score, .overlay-score, .lower-third, .d20-corner-tray) {
+  background: linear-gradient(135deg, #ffffff18, #ffffff03 55%), color-mix(in srgb, var(--glass-tint) var(--glass-opacity), transparent) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(125%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(125%);
+  border-color: color-mix(in srgb, var(--accent) 40%, #ffffff60);
+}
+.presentation[data-glass]:not([data-glass="off"]) .audience-square::before {
+  /* Replace the Fantasy Codex wood texture only while glass is enabled. */
+  background: none;
+}
+.presentation[data-glass]:not([data-glass="off"]) .d20-corner-tray :is(.d20-ready-state, .d20-public) { background: transparent; }
+@supports not (backdrop-filter: blur(1px)) {
+  .presentation[data-glass]:not([data-glass="off"]) { --glass-opacity: 95% !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .presentation[data-glass]:not([data-glass="off"]) { --glass-opacity: 100% !important; --glass-blur: 0px !important; }
+}

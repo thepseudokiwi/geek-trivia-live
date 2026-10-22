@@ -4,3 +4,4 @@
 .security-card h1,.security-card .eyebrow{text-align:center}
 .security-card label{display:grid;gap:.4rem}
 .security-card input,.security-card button{min-height:3.3rem}
+.security-card form{display:grid;gap:1rem}.admin-accounts section{margin:1.25rem 0;padding:1rem;border:1px solid #64748b55;border-radius:.6rem}.admin-accounts label{display:grid;gap:.3rem}

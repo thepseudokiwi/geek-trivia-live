@@ -1,0 +1,39 @@
+/* Desktop uses the available viewport, not a board aspect ratio plus controls. */
+@media (min-width:901px) and (min-height:600px) {
+ .contestant-app.contestant-cockpit{height:100dvh;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:.5rem;padding:.75rem;overflow:hidden}
+ .contestant-cockpit > .player-header{padding:0 0 .45rem;gap:1rem}
+ .contestant-cockpit > .player-header h1{font-size:1.5rem;line-height:1.1}
+ .contestant-cockpit > .player-header p{margin:.1rem 0;font-size:.9rem}
+ .contestant-cockpit > .player-header .eyebrow{font-size:.7rem}
+ .contestant-cockpit .player-cockpit-grid{height:100%;min-height:0;grid-template-columns:minmax(0,1fr) clamp(15rem,21vw,21rem);align-items:stretch;gap:.75rem}
+ .contestant-cockpit .player-game-area{height:100%;min-height:0;display:block}
+ .contestant-cockpit .player-program-view{width:100%;height:100%;max-height:none;aspect-ratio:auto;min-height:0}
+ /* The audience display already includes the question; retain the extra
+    readable copy only for the small-screen layout. */
+ .contestant-cockpit .player-program-view ~ .player-question-details{display:none}
+ .contestant-cockpit .player-control-rail{position:static;min-height:0;overflow:auto;align-content:start;gap:.6rem;padding:.75rem}
+ .contestant-cockpit .player-control-rail .buzzer-button{width:min(100%,23vh,15rem);font-size:clamp(1.3rem,2.4vh,2rem);border-width:.45rem}
+ .contestant-cockpit .player-roll-button{width:100%;padding:.7rem;font-size:clamp(1rem,2vh,1.5rem)}
+ .contestant-cockpit .player-camera{width:100%;min-width:0;margin:0;padding:.4rem}
+ .contestant-cockpit .player-camera-heading{display:grid;gap:.35rem;font-size:.8rem;margin-bottom:.35rem}
+ .contestant-cockpit .player-media-controls{justify-content:flex-start;gap:.2rem}
+ .contestant-cockpit .player-media-controls button{font-size:.68rem;padding:.3rem}
+ .contestant-cockpit .player-camera iframe{max-height:18vh}
+ .contestant-cockpit > footer{padding-top:.4rem;gap:.5rem}
+ .contestant-cockpit > footer button{min-height:2.25rem;padding:.45rem .75rem;font-size:.85rem}
+ .contestant-cockpit > .error{margin:0;padding:.4rem .7rem;font-size:.85rem;max-height:4rem;overflow:auto}
+}
+.player-control-rail > .player-camera{grid-column:1/-1}
+.contestant-cockpit .player-camera iframe{overflow:hidden;border-radius:12px;aspect-ratio:16/9}
+.contestant-cockpit .player-camera.camera-setup-open{position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%);z-index:10000;width:min(900px,94vw);height:min(740px,92dvh);max-width:none;margin:0;padding:1rem;display:flex;flex-direction:column;box-shadow:0 0 0 100vmax #000b;overflow:hidden;color:#fff;background:#080d1c}
+.contestant-cockpit .camera-setup-open .player-camera-heading{display:flex;flex-wrap:wrap;font-size:1rem;flex-shrink:0}
+.contestant-cockpit .camera-setup-open .player-media-controls button{font-size:.9rem;padding:.5rem .7rem}
+.contestant-cockpit .camera-setup-open iframe{flex:1;min-height:0;max-height:none;aspect-ratio:auto;width:100%}
+.camera-setup-help{font-size:.9rem;margin:0 0 .75rem;line-height:1.4}
+@media(min-width:901px) and (min-height:600px){
+ .contestant-app.contestant-cockpit{font-size:clamp(12px,1.1vw,18px);padding:clamp(6px,.65vw,16px);gap:clamp(4px,.5vh,10px)}
+ .contestant-cockpit > .player-header h1{font-size:clamp(1.1rem,2.5vh,2rem)}
+ .contestant-cockpit .player-cockpit-grid{grid-template-columns:minmax(0,1fr) minmax(0,21%)}
+ .contestant-cockpit .player-control-rail{padding:clamp(5px,.65vw,14px);gap:clamp(4px,.7vh,10px)}
+ .contestant-cockpit .player-control-rail .buzzer-button{font-size:clamp(1rem,2.4vh,2rem)}
+}

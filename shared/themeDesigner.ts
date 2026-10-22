@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { glassSchema, glassPresets } from './themeGlass.js';
+import { playerThemeSchema, defaultPlayerTheme } from './playerTheme.js';
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/, 'Use a six- or eight-digit hex color.');
 const opacity = z.number().min(0).max(1);
@@ -47,6 +49,8 @@ const typeShape = Object.fromEntries(typeRoles.map(key => [key, typographySchema
 
 export const themeConfigSchema = z.object({
   compatibilityVersion: z.literal(1),
+  glass: glassSchema.default(glassPresets.off),
+  playerScreen: playerThemeSchema.default(defaultPlayerTheme),
   metadata: z.object({ name: safeText, description: z.string().max(500), thumbnailAssetId: assetId, defaultProfileId: z.string().max(100).nullable(), defaultLayout: z.enum(['full','overlay','scorebug','question','lowerthird']), defaultScene: z.enum(['standby','intro','board','question','answer','scores','d20','intermission','round-transition','winner','final','credits','custom-message']) }),
   global: z.object({ radius: z.number().min(0).max(120), borderWidth: z.number().min(0).max(20), shadow: z.number().min(0).max(100), glow: z.number().min(0).max(100), motion: z.number().min(0).max(1), contentScale: z.number().min(.5).max(1.5), opacity, pagePadding: px.max(300), scenePadding: px.max(300), sectionGap: px.max(200), panelPadding: px.max(200), gridGap: px.max(100) }),
   branding: z.object({ showTitle: safeText.nullable().default(null), logoAssetId: assetId, watermarkAssetId: assetId, sponsorAssetId: assetId, logoSize: px.max(800), watermarkSize: px.max(800), showLogo: z.boolean(), showWatermark: z.boolean() }),
