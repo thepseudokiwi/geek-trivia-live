@@ -29,3 +29,8 @@
 .d20-ready-state{width:100%;height:100%;display:grid;place-content:center;justify-items:center;gap:.25rem;text-align:center}.d20-ready-state span{font:800 clamp(.75rem,1vw,1rem) var(--font-heading);letter-spacing:.18em;color:var(--muted,#94a3b8)}.d20-ready-state strong{font:1000 clamp(2rem,4vw,4rem) var(--font-display);color:var(--accent,#a78bfa);text-shadow:0 0 1.5rem color-mix(in srgb,var(--accent,#a78bfa) 60%,transparent)}.d20-ready-state small{color:var(--text,#fff)}
 @media(max-width:900px){.presentation:has(>.d20-corner-tray) .board-position,.presentation .d20-tray-board .board-position{left:14%!important;width:62%!important}.d20-corner-tray{width:21vw;height:29vh;right:2%;bottom:4%}}
 .presentation .audience-square .square-d20-value{display:block;margin-top:.1rem;font:800 clamp(.58rem,.78vw,.88rem) var(--font-body);letter-spacing:.06em;color:var(--text);opacity:.82;text-shadow:none}
+
+/* One gentle landing highlight; an old snapshot starts after the glow ends. */
+.d20-public.landed .d20-result-readout{animation:d20-result-glow 1.5s var(--d20-glow-delay,0ms) ease-out both}
+@keyframes d20-result-glow{0%,100%{text-shadow:none}10%,30%{text-shadow:0 0 16px #d5f6ff99,0 0 35px #b1e7ff66;color:#fffceb}}
+@media(prefers-reduced-motion:reduce){.d20-public.landed .d20-result-readout{animation:none}}

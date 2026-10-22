@@ -1,336 +1,88 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Component, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { D20Theme } from '../../shared/types';
+import { d20Palette } from '../../shared/d20Themes';
+import { roundedD20 } from '../d20/geometry';
+import { dieTopology } from '../d20/topology';
+import { prepareD20Roll, sampleD20Roll } from '../d20/physics';
+import { elapsedRollMs, landingGlowStrength, landingGlowMs } from '../d20/timing';
 
-type Face = {
-  normal: THREE.Vector3;
-  center: THREE.Vector3;
-  quaternion: THREE.Quaternion;
-};
-
-type SimulationState = {
-  startedAt: number;
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
-  quaternion: THREE.Quaternion;
-  angularVelocity: THREE.Vector3;
-  settlePosition: THREE.Vector3 | null;
-  settleQuaternion: THREE.Quaternion | null;
-  finalQuaternion: THREE.Quaternion;
-};
-
-const FLOOR_Y = -1.72;
-const LEFT_WALL = -4.35;
-const RIGHT_WALL = 4.35;
-const SETTLE_START = 0.72;
-
-function faceData() {
-  const geometry = new THREE.IcosahedronGeometry(1, 0).toNonIndexed();
-  const position = geometry.getAttribute('position');
-  const faces: Face[] = [];
-
-  for (let i = 0; i < position.count; i += 3) {
-    const a = new THREE.Vector3().fromBufferAttribute(position, i);
-    const b = new THREE.Vector3().fromBufferAttribute(position, i + 1);
-    const c = new THREE.Vector3().fromBufferAttribute(position, i + 2);
-    const center = a.clone().add(b).add(c).divideScalar(3);
-    const normal = center.clone().normalize();
-    faces.push({
-      center: center.multiplyScalar(1.012),
-      normal,
-      quaternion: new THREE.Quaternion().setFromUnitVectors(
-        new THREE.Vector3(0, 0, 1),
-        normal,
-      ),
-    });
-  }
-
-  geometry.dispose();
-  return faces;
-}
-
-function numberTexture(value: number, color: string) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = color;
-  ctx.font = '900 116px system-ui,sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.shadowColor = '#000';
-  ctx.shadowBlur = 10;
-  ctx.fillText(String(value), 128, 136);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
+type Props = { result: number; theme: D20Theme; durationMs: number; rolledAt: string; onLanded: () => void };
+function numberTexture(value: number, color: string, glow = false) {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas unavailable');
+  context.fillStyle = color; context.font = '600 138px Arial';
+  context.textAlign = 'center'; context.textBaseline = 'middle';
+  if (glow) { context.shadowColor = '#ffffff'; context.shadowBlur = 23; }
+  const paint = () => { context.fillText(String(value), 128, 137); if (value === 6 || value === 9) context.fillRect(109, 208, 38, 6); };
+  if (glow) { paint(); paint(); } paint();
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
+const numberedFaces = dieTopology.faces.map((face, index) => {
+  const [a,b,c] = face.map(vertex => dieTopology.vertices[vertex]);
+  const center = a.clone().add(b).add(c).multiplyScalar(1/3), normal = dieTopology.normals[index];
+  const up = a.clone().sub(center).normalize(), right = new THREE.Vector3().crossVectors(up,normal).normalize();
+  return { center: center.addScaledVector(normal,.007), normal, quaternion: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(right,up,normal)) };
+});
 
-const palettes: Record<
-  D20Theme,
-  { surface: string; edge: string; number: string; emissive: string }
-> = {
-  neon_arcane: {
-    surface: '#4c1d95',
-    edge: '#c084fc',
-    number: '#fff7c2',
-    emissive: '#5b21b6',
-  },
-  classic_polyhedral: {
-    surface: '#6b451f',
-    edge: '#e8c27a',
-    number: '#fff4d6',
-    emissive: '#2a1708',
-  },
-  holographic_scifi: {
-    surface: '#063b52',
-    edge: '#67e8f9',
-    number: '#e6feff',
-    emissive: '#075985',
-  },
-};
-
-function seededRandom(seedText: string) {
-  let seed = 2166136261;
-  for (const char of seedText) {
-    seed ^= char.charCodeAt(0);
-    seed = Math.imul(seed, 16777619);
-  }
-  return () => {
-    seed += 0x6d2b79f5;
-    let t = seed;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function buildSimulation(result: number, rollKey: string, faces: Face[]): SimulationState {
-  const random = seededRandom(`${rollKey}:${result}`);
-  const target = new THREE.Quaternion().setFromUnitVectors(
-    faces[result - 1].normal,
-    new THREE.Vector3(0, 0, 1),
-  );
-  const finalYaw = new THREE.Quaternion().setFromAxisAngle(
-    new THREE.Vector3(0, 0, 1),
-    (random() - 0.5) * Math.PI * 1.4,
-  );
-  const finalQuaternion = finalYaw.multiply(target);
-
-  return {
-    startedAt: performance.now(),
-    position: new THREE.Vector3(-3.6 + random() * 1.2, 2.45 + random() * 0.75, 0),
-    velocity: new THREE.Vector3(5.2 + random() * 2.1, 2.1 + random() * 1.7, 0),
-    quaternion: new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(random() * Math.PI, random() * Math.PI, random() * Math.PI),
-    ),
-    angularVelocity: new THREE.Vector3(
-      9 + random() * 8,
-      11 + random() * 9,
-      8 + random() * 7,
-    ),
-    settlePosition: null,
-    settleQuaternion: null,
-    finalQuaternion,
-  };
-}
-
-function rotateByAngularVelocity(
-  quaternion: THREE.Quaternion,
-  angularVelocity: THREE.Vector3,
-  dt: number,
-) {
-  const speed = angularVelocity.length();
-  if (speed < 0.0001) return;
-  const delta = new THREE.Quaternion().setFromAxisAngle(
-    angularVelocity.clone().normalize(),
-    speed * dt,
-  );
-  quaternion.premultiply(delta).normalize();
-}
-
-function Die({
-  result,
-  theme,
-  durationMs,
-  rollKey,
-  onLanded,
-}: {
-  result: number;
-  theme: D20Theme;
-  durationMs: number;
-  rollKey: string;
-  onLanded: () => void;
-}) {
-  const group = useRef<THREE.Group>(null);
-  const shadow = useRef<THREE.Mesh>(null);
-  const reported = useRef(false);
-  const faces = useMemo(faceData, []);
-  const palette = palettes[theme];
-  const textures = useMemo(
-    () => faces.map((_, index) => numberTexture(index + 1, palette.number)),
-    [faces, palette.number],
-  );
-  const simulation = useRef(buildSimulation(result, rollKey, faces));
-
-  useEffect(() => {
-    simulation.current = buildSimulation(result, rollKey, faces);
-    reported.current = false;
-  }, [faces, result, rollKey]);
-
-  useEffect(
-    () => () => {
-      textures.forEach((texture) => texture.dispose());
-    },
-    [textures],
-  );
-
-  useFrame((_, frameDelta) => {
-    const die = group.current;
-    if (!die) return;
-
-    const sim = simulation.current;
-    const raw = Math.min(
-      1,
-      (performance.now() - sim.startedAt) / Math.max(1, durationMs),
-    );
-
-    if (raw < SETTLE_START) {
-      const dt = Math.min(frameDelta, 1 / 30);
-      sim.velocity.y -= 9.8 * dt;
-      sim.position.addScaledVector(sim.velocity, dt);
-      rotateByAngularVelocity(sim.quaternion, sim.angularVelocity, dt);
-
-      if (sim.position.x <= LEFT_WALL || sim.position.x >= RIGHT_WALL) {
-        sim.position.x = THREE.MathUtils.clamp(sim.position.x, LEFT_WALL, RIGHT_WALL);
-        sim.velocity.x *= -0.72;
-        sim.angularVelocity.multiplyScalar(0.92);
-      }
-
-      if (sim.position.y <= FLOOR_Y) {
-        sim.position.y = FLOOR_Y;
-        sim.velocity.y = Math.abs(sim.velocity.y) * 0.48;
-        sim.velocity.x *= 0.82;
-        sim.angularVelocity.multiplyScalar(0.76);
-        sim.angularVelocity.z += sim.velocity.x * 0.16;
-      }
-    } else {
-      if (!sim.settlePosition) {
-        sim.settlePosition = sim.position.clone();
-        sim.settleQuaternion = sim.quaternion.clone();
-      }
-      const settleRaw = (raw - SETTLE_START) / (1 - SETTLE_START);
-      const ease = 1 - Math.pow(1 - settleRaw, 4);
-      const hop = Math.sin(settleRaw * Math.PI * 2.2) * (1 - ease) * 0.2;
-      sim.position.lerpVectors(
-        sim.settlePosition,
-        new THREE.Vector3(0, -0.08, 0),
-        ease,
-      );
-      sim.position.y += hop;
-      sim.quaternion.slerpQuaternions(
-        sim.settleQuaternion!,
-        sim.finalQuaternion,
-        ease,
-      );
-    }
-
-    die.position.copy(sim.position);
-    die.quaternion.copy(sim.quaternion);
-
-    if (shadow.current) {
-      const height = Math.max(0, sim.position.y - FLOOR_Y);
-      const scale = 0.82 + Math.min(1.3, height * 0.18);
-      shadow.current.position.x = sim.position.x;
-      shadow.current.scale.set(scale, 0.45 * scale, 1);
-      const material = shadow.current.material as THREE.MeshBasicMaterial;
-      material.opacity = THREE.MathUtils.clamp(0.34 - height * 0.055, 0.08, 0.34);
-    }
-
-    if (raw >= 1 && !reported.current) {
-      reported.current = true;
-      onLanded();
-    }
+function Die({ result, theme, durationMs, rolledAt, onLanded }: Props) {
+  const group = useRef<THREE.Group>(null), glow = useRef<THREE.Mesh<THREE.PlaneGeometry,THREE.MeshBasicMaterial>>(null);
+  const reported = useRef(false), callback = useRef(onLanded); callback.current = onLanded;
+  const { camera, size, invalidate } = useThree();
+  const roll = useMemo(() => prepareD20Roll(result, rolledAt), [result, rolledAt]);
+  const geometry = useMemo(() => roundedD20(dieTopology.vertices,dieTopology.faces,dieTopology.normals), []);
+  const palette = d20Palette(theme);
+  const textures = useMemo(() => roll.faceValues.map(value => numberTexture(value,palette.numbers)), [roll,palette]);
+  const glowTexture = useMemo(() => numberTexture(result,'#ffffff',true), [result]);
+  const final = roll.samples[roll.samples.length - 1].position;
+  const bound = useMemo(() => Math.max(...roll.samples.map(sample => Math.abs(sample.position.x-final.x)))+1.3, [roll,final]);
+  useEffect(() => () => { geometry.dispose(); }, [geometry]);
+  useEffect(() => () => { textures.forEach(texture => texture.dispose()); }, [textures]);
+  useEffect(() => () => { glowTexture.dispose(); }, [glowTexture]);
+  useFrame(() => {
+    if (!group.current) return;
+    const elapsed = elapsedRollMs(rolledAt,durationMs), progress = durationMs > 0 ? Math.min(1,elapsed/durationMs) : 1;
+    const sample = sampleD20Roll(roll,progress);
+    group.current.position.copy(sample.position).sub(new THREE.Vector3(final.x,0,final.z));
+    group.current.quaternion.copy(sample.rotation);
+    const zoom = THREE.MathUtils.smoothstep(progress,.82,1);
+    const wide = Math.max(12,bound / Math.tan(THREE.MathUtils.degToRad(19)) / Math.max(.35,size.width/size.height));
+    const distance = THREE.MathUtils.lerp(wide,6.5,zoom);
+    camera.position.set(0,distance,distance*.31); camera.lookAt(0,0,0);
+    if (glow.current) { const strength=landingGlowStrength(elapsed-durationMs); glow.current.visible=strength>0; glow.current.material.opacity=strength*.95; }
+    if (progress === 1 && !reported.current) { reported.current=true; callback.current(); }
+    if (elapsed < durationMs+landingGlowMs) invalidate();
   });
-
-  return (
-    <>
-      <mesh ref={shadow} position={[0, FLOOR_Y - 0.76, -0.35]} renderOrder={0}>
-        <circleGeometry args={[0.78, 40]} />
-        <meshBasicMaterial color="#000000" transparent opacity={0.28} depthWrite={false} />
-      </mesh>
-      <group ref={group}>
-        <mesh>
-          <icosahedronGeometry args={[1, 0]} />
-          <meshStandardMaterial
-            color={palette.surface}
-            emissive={palette.emissive}
-            emissiveIntensity={0.32}
-            metalness={0.52}
-            roughness={0.28}
-            flatShading
-          />
-        </mesh>
-        {faces.map((face, index) => (
-          <mesh
-            key={index}
-            position={face.center}
-            quaternion={face.quaternion}
-            renderOrder={2}
-          >
-            <planeGeometry args={[0.48, 0.48]} />
-            <meshBasicMaterial
-              map={textures[index]}
-              transparent
-              depthWrite={false}
-              polygonOffset
-              polygonOffsetFactor={-3}
-            />
-          </mesh>
-        ))}
-        <lineSegments>
-          <edgesGeometry args={[new THREE.IcosahedronGeometry(1.002, 0)]} />
-          <lineBasicMaterial color={palette.edge} />
-        </lineSegments>
-      </group>
-    </>
-  );
+  const top = numberedFaces[roll.topFace];
+  return <group ref={group}>
+    <mesh geometry={geometry} castShadow receiveShadow dispose={null}><meshStandardMaterial color={palette.surface} roughness={.27} metalness={.25}/></mesh>
+    {numberedFaces.map((face,index) => <mesh key={index} position={face.center} quaternion={face.quaternion} renderOrder={1}>
+      <planeGeometry args={[.58,.58]}/><meshBasicMaterial map={textures[index]} transparent depthWrite={false} polygonOffset polygonOffsetFactor={-1}/>
+    </mesh>)}
+    <mesh ref={glow} position={top.center.clone().addScaledVector(top.normal,.002)} quaternion={top.quaternion} visible={false} renderOrder={2}>
+      <planeGeometry args={[.58,.58]}/><meshBasicMaterial map={glowTexture} color={palette.glow} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false}/>
+    </mesh>
+  </group>;
 }
-
-export function D20Three({
-  result,
-  theme,
-  durationMs,
-  rollKey,
-  onLanded,
-}: {
-  result: number;
-  theme: D20Theme;
-  durationMs: number;
-  rollKey: string;
-  onLanded: () => void;
-}) {
-  return (
-    <div className="d20-three" role="img" aria-label={`D20 result ${result}`}>
-      <Canvas
-        dpr={[1, 2]}
-        camera={{ position: [0, 0, 8.4], fov: 42 }}
-        gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
-        fallback={null}
-      >
-        <ambientLight intensity={1.2} />
-        <directionalLight position={[4, 5, 6]} intensity={3.2} />
-        <pointLight position={[-4, -2, 3]} intensity={2.2} color="#67e8f9" />
-        <Die
-          result={result}
-          theme={theme}
-          durationMs={durationMs}
-          rollKey={rollKey}
-          onLanded={onLanded}
-        />
+function Fallback({result}:{result:number}) { return <div className="d20-webgl-fallback" role="img" aria-label={`D20 result ${result}`}>{result}</div>; }
+class RendererBoundary extends Component<{children:ReactNode;result:number},{failed:boolean}> {
+  state = {failed:false};
+  static getDerivedStateFromError() { return {failed:true}; }
+  render() { return this.state.failed ? <Fallback result={this.props.result}/> : this.props.children; }
+}
+export function D20Three(props: Props) {
+  return <div className="d20-three" role="img" aria-label={`D20 result ${props.result}`}>
+    <RendererBoundary key={props.rolledAt} result={props.result}>
+      <Canvas frameloop="demand" dpr={[1,2]} camera={{position:[0,12,3.72],fov:38}} shadows gl={{alpha:true,antialias:true,powerPreference:'high-performance'}} fallback={<Fallback result={props.result}/>}>
+        <hemisphereLight args={['#fff4dc','#3b4642',3]}/>
+        <directionalLight position={[-4,9,5]} intensity={4} color="#ffeed6" castShadow shadow-mapSize={[1024,1024]} shadow-camera-left={-8} shadow-camera-right={8} shadow-camera-top={8} shadow-camera-bottom={-8} shadow-bias={-.001}/>
+        <directionalLight position={[4,3,-4]} intensity={2} color="#b8d5e6"/>
+        <mesh rotation={[-Math.PI/2,0,0]} position={[0,-.015,0]} receiveShadow><planeGeometry args={[200,200]}/><shadowMaterial opacity={.38}/></mesh>
+        <Die key={props.rolledAt} {...props}/>
       </Canvas>
-    </div>
-  );
+    </RendererBoundary>
+  </div>;
 }

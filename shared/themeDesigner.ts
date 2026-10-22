@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { glassSchema, glassPresets } from './themeGlass.js';
 import { playerThemeSchema, defaultPlayerTheme } from './playerTheme.js';
+import { d20ThemeIds } from './d20Themes.js';
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/, 'Use a six- or eight-digit hex color.');
 const opacity = z.number().min(0).max(1);
@@ -61,7 +62,7 @@ export const themeConfigSchema = z.object({
   answer: z.object({ card: elementSchema, showQuestion: z.boolean(), label: safeText, transition: z.enum(['cut','fade','flip','wipe','reveal']), celebrationIntensity: z.number().min(0).max(1), showAwardedParticipant: z.boolean(), showScoreDelta: z.boolean(), showModifier: z.boolean() }),
   scoreboard: z.object({ element: elementSchema, mode: z.enum(['horizontal','vertical','grid','podium','compact']), columns: z.number().int().min(1).max(8), maxParticipants: z.number().int().min(2).max(8), showRank: z.boolean(), showAvatar: z.boolean(), showTeamColor: z.boolean(), animateChanges: z.boolean(), eightPlayerScale: z.number().min(.4).max(1) }),
   timer: z.object({ element: elementSchema, style: z.enum(['digital','circular','horizontal-bar','vertical-bar','minimal','segmented']), size: px.max(800), warningSeconds: z.number().min(1).max(600), criticalSeconds: z.number().min(0).max(300), pulse: z.boolean(), soundCue: z.string().max(80).nullable() }),
-  d20: z.object({ element: elementSchema, theme: z.enum(['neon_arcane','classic_polyhedral','holographic_scifi']), size: px.max(1000), surface: hex, edges: hex, numbers: hex, glow: z.number().min(0).max(100), animationMs: z.number().min(0).max(10000), rotation: z.number().min(0).max(2), landingScale: z.number().min(.5).max(2), reducedMotion: z.enum(['cut','fade','scale']) }),
+  d20: z.object({ element: elementSchema, theme: z.enum(d20ThemeIds), size: px.max(1000), surface: hex, edges: hex, numbers: hex, glow: z.number().min(0).max(100), animationMs: z.number().min(0).max(10000), rotation: z.number().min(0).max(2), landingScale: z.number().min(.5).max(2), reducedMotion: z.enum(['cut','fade','scale']) }),
   lowerThirds: z.object({ element: elementSchema, width: percent, height: percent, accent: hex, entrance: z.enum(['cut','fade','slide-left','slide-right','slide-up']), exit: z.enum(['cut','fade','slide-left','slide-right','slide-down']), durationMs: z.number().min(1000).max(60000), transparency: opacity }),
   transitions: z.object({ defaultKind: z.enum(['cut','fade','crossfade','slide-left','slide-right','slide-up','zoom','wipe','glitch','iris']), durationMs: z.number().min(0).max(5000), easing: z.enum(['linear','ease','ease-in','ease-out','ease-in-out']), reducedMotionFallback: z.enum(['cut','fade']) }),
   scenes: z.record(z.string().max(40), z.object({ inherit: z.boolean(), background: backgroundSchema.optional(), positions: z.record(z.string().max(40), positionSchema).default({}) })).default({}),
