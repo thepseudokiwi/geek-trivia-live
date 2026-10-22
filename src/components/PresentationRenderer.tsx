@@ -33,7 +33,7 @@ export function PresentationRenderer({state,presentation=pState(state),scene=pre
     {scene==='custom-message'&&<section className="hero-scene"><h2>{p.customMessage??'Stay tuned'}</h2></section>}
    </>}
   </main>
-  {(scene==='board'||scene==='d20')&&<aside className={`d20-corner-tray ${displayD20?'active-roll':'idle-tray'}`}>{displayD20&&state.d20?<D20Presentation roll={state.d20} onDone={onD20Done??(()=>{})}/>:<div className="d20-ready-state"><span>D20</span><strong>{state.d20?.result??'READY'}</strong><small>{state.d20?'Last roll':'Waiting for the controlling team'}</small></div>}</aside>}
+  {(scene==='board'||scene==='d20')&&<aside className={`d20-corner-tray ${displayD20?'active-roll':'idle-tray'}`}>{displayD20&&state.d20?<D20Presentation roll={{...state.d20,soundEnabled:state.d20.soundEnabled&&!p.audio.masterMuted&&!p.audio.reducedAudio}} reducedMotion={reduced||p.reducedMotion||p.animationsDisabled} onDone={onD20Done??(()=>{})}/>:<div className="d20-ready-state"><span>D20</span><strong>{state.d20?.result??'READY'}</strong><small>{state.d20?'Last roll':'Waiting for the controlling team'}</small></div>}</aside>}
   {(layout==='scorebug'||layout==='overlay')&&<aside style={pos('scoreboard')} className="overlay-score"><Scores state={state} compact/><output>{Math.ceil(remainingMs/1000)}s</output></aside>}
   {layout==='lowerthird'&&<aside style={pos('lowerThird')} className="lower-third"><strong>{p.customMessage??state.question?.category??(!p.profile.logoUrl?p.profile.showTitle:p.profile.subtitle)}</strong><span>{p.profile.subtitle}</span></aside>}
   {p.graphics.map(graphic=><aside className={`broadcast-graphic graphic-${graphic.type}`} key={graphic.id}>{graphic.text}</aside>)}

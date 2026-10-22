@@ -509,3 +509,11 @@ GOOGLE_FONTS_API_KEY=your_key
 ```
 
 Restart the server after changing the file. Theme Designer retrieves catalog metadata through the Node server, never sends the key to the browser, and downloads only a selected family's regular face. Downloaded files are signature validated, checksum deduplicated, and cached in `data/presentation-assets/` for local/offline OBS playback. The app uses the macOS system certificate authorities for this connection. Review the selected family's Google Fonts license before broadcast use.
+
+### Rounded D20 presentation
+
+The host preview and audience D20 now use the rounded physics renderer from the Nerd Wars D20 demo. Select a finish in D20 Settings or the Theme Designer: the three existing presets remain compatible, alongside Ember, Violet, Mint, Ocean, Ruby, Gold, Ice, Rose, Graphite and Ivory.
+
+The server still chooses the result and applies the existing effects, awards and undo rules. The client records a deterministic throw from the roll timestamp, labels its upward face with that result, and synchronizes playback to the original timestamp. Rejoining an expired roll shows the result without replaying its sound. On landing, the top number briefly glows and a soft ascending flourish follows the existing D20 sound/volume controls. Host previews stay muted; audience master mute, reduced audio and `?audio=off` suppress D20 audio. Reduced motion and unavailable WebGL retain a numeric result fallback.
+
+The renderer is loaded only for D20 presentation, generates its mesh and number textures locally, and no longer requires `public/models/D20.glb`. No database migration is required. Deploy with the project's normal `npm ci` and `npm run build` workflow.
