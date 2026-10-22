@@ -1,0 +1,9 @@
+import{afterAll,beforeAll,describe,expect,it}from'vitest';import{execFileSync}from'node:child_process';import path from'node:path';
+import {randomUUID} from 'node:crypto';
+const dbPath=path.resolve(`data/test-video-feeds-${randomUUID()}.db`);let feeds:typeof import('../server/videoFeedRepository.js'),live:typeof import('../server/liveRepository.js'),db:any;const episodeId='DEMO-EP-RUN';
+beforeAll(async()=>{for(const script of['server/db/migrate.ts','server/db/seed.ts'])execFileSync(process.execPath,['--import','tsx',script],{cwd:process.cwd(),env:{...process.env,DATABASE_PATH:dbPath}});process.env.DATABASE_PATH=dbPath;feeds=await import('../server/videoFeedRepository.js');live=await import('../server/liveRepository.js');db=(await import('../server/db/database.js')).db});afterAll(()=>db.close());
+describe('VDO.Ninja production feeds',()=>{
+ it('accepts view links and forces clean autoplay embeds with audio available',()=>{const result=feeds.saveVideoFeed(episodeId,{label:'Nova camera',viewUrl:'https://vdo.ninja/?view=Nova123&noaudio',position:'top-right',visible:true,teamSide:'left'});expect(result[0].viewUrl).toContain('view=Nova123');expect(result[0].viewUrl).not.toContain('noaudio');expect(result[0].viewUrl).toContain('autoplay=');expect(result[0].teamSide).toBe('left');expect(live.getPublicLiveState(episodeId).videoFeeds).toHaveLength(1)});
+ it('keeps hidden feeds out of public state',()=>{const current=feeds.listVideoFeeds(episodeId)[0];feeds.saveVideoFeed(episodeId,{...current,visible:false},current.id);expect(live.getPublicLiveState(episodeId).videoFeeds).toEqual([])});
+ it('rejects push links and non-VDO hosts',()=>{expect(()=>feeds.normalizedVdoViewUrl('https://vdo.ninja/?push=secret')).toThrow(/view link/i);expect(()=>feeds.normalizedVdoViewUrl('https://example.com/?view=secret')).toThrow(/VDO.Ninja/i)});
+});

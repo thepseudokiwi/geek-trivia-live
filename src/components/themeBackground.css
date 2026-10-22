@@ -1,0 +1,10 @@
+.presentation > .custom-theme-background {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.presentation > .custom-theme-background > img { width: 100%; height: 100%; display: block; }
+/* Keep theme decoration from covering the uploaded image. */
+.presentation:has(> .custom-theme-background)::after { display: none; }

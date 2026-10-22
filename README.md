@@ -2,6 +2,32 @@
 
 A local-first React application for maintaining a trivia library, building balanced episode boards, and producing a synchronized live trivia show. Phase 3 adds a private Host Console, a server-sanitized OBS Audience Display, WebSocket rooms, a persistent authoritative timer, revision-safe commands, a host-control lease, and compensating safe undo.
 
+## Public production deployment
+
+Production mode requires host authentication and refuses to start unless `HOST_PASSWORD`, a random `HOST_SESSION_SECRET` of at least 32 characters, and `APP_ORIGIN` are configured. Host access uses a signed, HTTP-only, SameSite cookie. All administrative APIs and Host WebSockets require that session. Contestant routes, sanitized Audience state, approved presentation assets, and token-limited theme previews remain public. State-changing browser requests and all WebSockets are restricted to the configured origin; security headers, HTTPS-only production cookies, login throttling, proxy-aware client addresses, and HSTS are enabled.
+
+Copy `.env.production.example` to a root-owned file outside the repository, replace every placeholder, and generate the session secret with a cryptographically secure password generator. Never commit the production environment file. Set `TRUST_PROXY=loopback` when Nginx or Caddy is on the same machine. Store `DATABASE_PATH` on local persistent storage, not NFS, SMB, Dropbox, or OneDrive.
+
+Build the client with `npm run build`, serve `dist/` through the reverse proxy, and proxy `/api/` plus WebSocket upgrades at `/ws` to the Node service on port 8787. Example Nginx and systemd files are in `deploy/`. Terminate TLS at the reverse proxy, run Node as an unprivileged dedicated user, restrict write access to the database and presentation-assets directories, and back up both together while the service is stopped or with SQLite's online backup tooling.
+
+Public routes are `/#play/JOINCODE`, `/#audience/EPISODE_ID`, and published or token-limited theme previews. Opening the root application, question library, episode tools, Theme Designer, or Host Console presents the host sign-in screen. Use **Sign out** after operating from a shared computer.
+
+## Player accounts and cloud deployment
+
+The cloud-ready player portal adds `/#open-play`, `/#account`, and Neon Auth screens under `/#auth/*`. Player accounts support email/password registration and Google sign-in while remaining separate from privileged host access. If `VITE_NEON_AUTH_URL` is absent, these pages show a safe setup message instead of attempting authentication against an invalid endpoint.
+
+Neon Postgres definitions for player profiles, open-play sessions, registrations, and game statistics are in `server/db/postgres/`. The migration uses row-level security so authenticated players can see or change only their own profile and registrations. A database trigger serializes seat claims and prevents concurrent registrations from exceeding capacity. The application server uses the pooled `DATABASE_URL`; migrations and administrative jobs use `DATABASE_URL_UNPOOLED`.
+
+The current SQLite show database remains authoritative until its full schema and data have been rehearsed against a separate Neon branch. Do not point production at Neon or delete the SQLite database before that rehearsal passes. Vercel Functions can host the HTTP application, but realtime show traffic also requires `REDIS_URL` for Upstash-backed cross-instance fan-out; in-memory WebSocket rooms are not safe across multiple function instances. When `REDIS_URL` is set, episode changes publish a minimal invalidation message so sockets attached to other instances reload the authoritative state.
+
+Cloud setup requires these service-side steps:
+
+1. Create a Neon project and enable Neon Auth with email/password and Google.
+2. Apply `server/db/postgres/migrations/001_player_accounts.sql`, enable Neon Auth and the Data API, then apply `002_player_access_policies.sql`. The second migration depends on the roles created by the Data API.
+3. Create an Upstash Redis database in the same region as the Vercel project.
+4. Import the GitHub repository into Vercel and add the values shown in `.env.production.example` as encrypted environment variables.
+5. Deploy a preview first, test registration and Google OAuth callback URLs, then rehearse the SQLite-to-Neon data import before production cutover.
+
 ## Architecture
 
 - `src/`: React 19 + strict TypeScript + Vite interface. It contains the Question Library and minimal Episode Builder.
@@ -23,7 +49,7 @@ npm run db:seed
 npm run dev
 ```
 
-Open `http://localhost:5173`. The local API listens on `http://localhost:8787`.
+Open `http://localhost:8787`. The built browser interface, API, and WebSocket service all use port `8787`. Port `5173` is reserved only for optional Vite development work.
 
 ## Tests and production build
 
@@ -86,6 +112,73 @@ The audience composition uses broadcast-safe margins, large type, high contrast,
 ## Phase 3 migration
 
 `004_live_console.sql` adds public mode, active question, answer reveal, revision, timer persistence, undo metadata, and the idempotent `live_commands` table. It preserves all Phase 2 question states and game-action history. Tests apply the ordered migrations to clean/Phase 1 data and validate a Phase 2-to-Phase 3 upgrade.
+
+## Phase 4A D20 system
+
+The D20 is a server-authoritative extension of the existing live command system. It does not use browser randomness and it does not create a parallel socket protocol. Host commands retain command IDs and expected episode revisions; accepted rolls are written before their result is broadcast. Refreshes and reconnects therefore receive the same persisted result.
+
+### Modes and fairness
+
+**Question Selector** builds an ordered pool of eligible episode-question rows on the server. Completed and active questions are excluded; skipped questions are included only when configured. The server chooses one direct uniform index with `crypto.randomInt(pool.length)`, then independently generates the theatrical D20 face with `crypto.randomInt(20) + 1`. The visible number is associated with that roll record rather than permanently mapped to a square. This gives every eligible square exactly one equal slot on both 4×5 and 5×5 boards without category or difficulty weighting.
+
+**Event Die** requires an active eligible question and resolves the result against the validated rule table. The default table is:
+
+| Roll | Effect | Correct award | Other behavior |
+|---|---|---|---|
+| 1 | Critical Failure | Base XP | Host may explicitly confirm a base-XP wrong-answer deduction |
+| 2–9 | Normal Question | Base XP | Normal timer |
+| 10–13 | Speed Challenge | Base XP | 10-second timer override; never starts automatically |
+| 14–16 | Bonus 100 XP | Base + 100 | Deductions remain base by default |
+| 17–18 | Steal Enabled | Base XP | Host records an initial miss and one final stealing award |
+| 19 | Double XP | Base × 2 | Deductions remain base by default |
+| 20 | Critical Hit: Triple XP | Base × 3 | Natural 20 presentation |
+
+Every active effect includes a name, inclusive range, type, multiplier, flat bonus, timer override, steal flag, scope, public description, private instructions, active flag, and display priority. Saving is rejected unless active ranges cover 1–20 exactly once with no gap or overlap.
+
+### Configuration
+
+The Host Console D20 panel provides mode selection, enable/disable, animation timing, reduced-motion timing, deduction behavior, skipped-question eligibility, generated sound cues, volume, three visual themes, and an editable rule range table. Settings are global defaults with per-episode overrides. The default themes are Neon Arcane, Classic Polyhedral, and Holographic Sci-Fi.
+
+Configuration endpoints:
+
+- `GET/PUT /api/settings/d20`
+- `GET/PUT /api/episodes/:id/d20`
+- `GET /api/episodes/:id/d20/rolls`
+
+Durable live commands are `d20.roll`, `d20.acknowledge`, `d20.apply`, `d20.cancel`, `d20.reroll`, and `d20.undo`. They use the existing HTTP command fallback and WebSocket controller lease. A deterministic `D20_TEST_RESULT` facility is honored only when `NODE_ENV=test`; production hosts cannot send a chosen result.
+
+### Modifier application and undo
+
+Applied modifiers are stored on the episode question with roll ID, base XP, effective award, effective deduction, timer override, steal flag, and status. Host Award/Deduct controls send only a direction and participant ID. The server reads the persisted modifier and computes the delta; it ignores client-calculated modified values. Duplicate correct awards are rejected.
+
+D20 undo preserves the original roll and adds a compensating action. An unapplied roll restores the prior selection and public mode. An applied modifier can be undone only after any dependent score action has itself been undone. Completed episodes and already-undone rolls remain immutable. The Host Console warns that a public visual result cannot be unseen.
+
+### Public projection, animation, and sound
+
+The audience receives result, public effect text, selected category/value, effective potential award, timer override, steal flag, timestamp, animation duration, theme, and optional sound preference. It never receives a question ID, unopened question text, private instructions, internal effect key, configuration snapshot, command metadata, or random-generator state.
+
+The presentation is a lightweight CSS 3D-styled polyhedral die that tumbles for the persisted duration and always displays the persisted final number. Natural 1 and Natural 20 have text and visual treatments. Reduced-motion replaces tumbling with a short scale transition. Refreshing mid-animation derives whether the result has landed from the stored roll timestamp.
+
+Sound cues use short Web Audio oscillator tones generated at runtime. There are no downloaded or third-party audio assets and therefore no external license obligation. Sound defaults off, respects the configured volume, and silently degrades when OBS or Chromium blocks audio autoplay.
+
+### Persistence and backup
+
+`005_d20_system.sql` adds global settings, validated effects, episode overrides, durable roll history, active-roll references, modifier fields, configuration snapshots, reroll references, and undo state. Migration tests preserve Phase 3 revision, display, timer, score, and action data. JSON backups add a `d20` section containing settings, effects, and rolls. Old backups without that section continue with defaults; restored effect ranges are validated before insertion.
+
+### Phase 4A OBS rehearsal
+
+1. Add the Audience Display as a 1920×1080 OBS Browser Source and test at both 30 and 60 FPS.
+2. Roll Question Selector on four- and five-category boards. Confirm the square highlights and its question text remains private.
+3. Exercise each default Event Die range, especially Natural 1, Speed Challenge, Double XP, and Natural 20.
+4. Test all three themes and the operating-system reduced-motion preference.
+5. Refresh the browser source during the tumble and after landing; the final face must remain identical.
+6. Restart the server after a result lands and verify the roll and modifier recover.
+7. Open three audience clients and verify synchronized result, effect, and selected square.
+8. Test sound disabled and enabled. In OBS, enable **Control audio via OBS** only when routing browser audio through the mixer.
+9. Watch CPU/GPU load at 30 and 60 FPS and test long category names.
+10. Record a short clip and verify the final number and effect remain readable at normal livestream size.
+
+The automated acceptance flow uses a test-only deterministic 19 to verify Selector persistence and Event Die Double XP, server-computed scoring, score undo, and modifier undo.
 
 ## Manual two-window acceptance test
 
@@ -165,15 +258,66 @@ Migrations are applied once in filename order and recorded in the `migrations` t
 The CSV header is:
 
 ```text
-id,category,subcategory,difficulty,pointValue,questionText,correctAnswer,alternateAnswers,hostNotes,source,active,usedCount,dateLastUsed,episodeLastUsed
+id,category,subcategory,difficulty,pointValue,questionText,correctAnswer,alternateAnswers,questionType,mediaPath,hostNotes,source,active,usedCount,dateLastUsed,episodeLastUsed
 ```
 
 - `difficulty` must be 1–5. XP is always derived as difficulty × 100; imported `pointValue` is ignored.
 - `subcategory` is optional.
 - `alternateAnswers` uses `|` between answers.
+- `questionType` is optional and defaults to `text`; supported values are `text`, `image`, `audio`, `video`, and `multiple-choice`.
+- `mediaPath` is optional for text and multiple-choice questions and required for image, audio, and video questions. Use a safe application-relative path or an `http(s)` URL.
 - `active` is `true` or `false`; `usedCount` is zero or greater.
 - Dates should use ISO 8601 format.
 - Invalid imports are rejected transactionally with spreadsheet row numbers and field errors.
+
+### Production question-bank import
+
+Back up the database before a production import. Stop the development server, then use either SQLite's online backup command or a file copy while the application is stopped:
+
+```bash
+sqlite3 data/geek-trivia.db ".backup 'data/geek-trivia-before-import.db'"
+# Or, with the server stopped:
+cp data/geek-trivia.db data/geek-trivia-before-import.db
+```
+
+Always rehearse the file first. A dry run performs all validation and duplicate/distribution analysis without changing SQLite:
+
+```bash
+npm run questions:import -- questions.csv --dry-run --report reports/questions-import.json
+```
+
+For the real import, existing IDs are rejected unless one explicit policy is selected:
+
+```bash
+# Keep existing rows unchanged and import only new IDs
+npm run questions:import -- questions.csv --skip-existing --report reports/questions-import.json
+
+# Replace matching rows, including their usage fields, with CSV values
+npm run questions:import -- questions.csv --replace-existing --report reports/questions-import.json
+
+# Optionally deactivate active database questions absent from the file
+npm run questions:import -- questions.csv --replace-existing --deactivate-missing
+```
+
+The command derives XP from difficulty, stores alternate answers as JSON, rejects duplicate IDs and exact duplicate text, warns on normalized near-duplicates and missing sources, and reports category/difficulty coverage. Any invalid required row prevents the entire transaction. `--replace-existing` and `--skip-existing` are mutually exclusive.
+
+To inspect whether the active library can fill complete boards, run:
+
+```bash
+npm run questions:stats
+```
+
+This prints the active total and a category-by-difficulty matrix. `Complete boards` is the lowest difficulty count in that category.
+
+To restore the pre-import database, stop the server, preserve the current file for diagnosis, and restore the backup:
+
+```bash
+mv data/geek-trivia.db data/geek-trivia-after-failed-import.db
+cp data/geek-trivia-before-import.db data/geek-trivia.db
+npm run db:migrate
+```
+
+The CLI and Question Library use the same row normalization and Zod validation. The original CSV fields remain accepted; `questionType` and `mediaPath` are backward-compatible optional additions.
 
 ## Backup and restore
 
@@ -210,11 +354,166 @@ Recent-use modes are: never used, last X saved/locked episodes, last X days, and
 - Node currently labels its built-in SQLite API experimental even though it is available in the supported runtime.
 - Host control is intentionally local and unauthenticated; anyone with local application access can request takeover.
 - Undo is limited to recent eligible live actions and cannot erase what viewers already saw after an answer reveal.
-- Timer expiration is reconciled by the server heartbeat while running and from timestamps in snapshots; no sound effect is included.
+- Timer expiration is reconciled by the server heartbeat while running and from timestamps in snapshots; timer-specific sound remains deferred.
 - Final mode and completed-episode production review remain intentionally conservative in this phase.
-- There is no remote buzzer, audience voting, chat integration, media playback, advanced wagering, cloud account service, or 3D D20.
+- The D20 uses a stylized CSS polyhedron rather than a physically accurate 20-face rigid-body simulation.
+- Generated D20 tones depend on browser/OBS autoplay permission and intentionally default off.
+- There is no audience voting, chat integration, advanced wagering, or cloud account service.
 - Episode list pagination is implemented through the API; the current UI displays the first scalable page of results.
 
-## Recommended Phase 4
+## Phase 4B broadcast presentation
 
-Add optional authenticated LAN host access, contestant buzzers, richer production transitions/audio cues, a final-round workflow, and the separately specified D20 modes. Keep all new contestant/public inputs behind the existing command, revision, and projection boundaries.
+Phase 4B adds a server-authoritative Preview/Program layer without replacing live game state. The Host Console can privately preview any supported scene, select a transition, queue it, **Take** it to Program, or **Cut** immediately. Program, queued Preview, theme, profile, layout, audio state, safe areas, overlays, and transition end timestamps are persisted in SQLite and delivered through the existing revision-safe WebSocket room. The unqueued local Preview selection intentionally resets to Program on host refresh. Late Audience clients receive the final Program scene; elapsed transitions settle without replaying indefinitely.
+
+Scenes include standby, intro, board, question, answer, scores, D20, intermission, round transition, winner, final, credits, and custom message. Transition duration is capped at five seconds, delay at two seconds, reduced-motion falls back to a cut, and essential text never depends on animation.
+
+### Themes and branding profiles
+
+Typed CSS-variable themes contain palettes, typography stacks, shapes, motion intensity, and transition defaults. Built-ins are original generic designs:
+
+- **Nerd Wars Classic** — dark geometric game-show panels with vibrant accents
+- **Neon Arcade** — energetic magenta/cyan grid treatment
+- **Fantasy Codex** — restrained parchment, bronze, and forest palette
+
+The default **Nerd Wars** profile and reusable **Geek Trivia Classic** profile select theme, show title, layout, D20 treatment, assets, audio profile, and safe areas. Profiles can be created or duplicated through the presentation API; the default cannot be deleted and referenced or missing assets are rejected.
+
+### OBS layouts and routes
+
+Use the Audience route as an OBS Browser Source at 1920×1080:
+
+```text
+http://localhost:8787/#audience/EPISODE_ID?layout=full
+http://localhost:8787/#audience/EPISODE_ID?layout=overlay
+http://localhost:8787/#audience/EPISODE_ID?layout=scorebug
+http://localhost:8787/#audience/EPISODE_ID?layout=question
+http://localhost:8787/#audience/EPISODE_ID?layout=lowerthird
+```
+
+Add `&audio=off` to disable Program audio, `&reducedMotion=true` for deterministic low-motion output. Invalid layouts safely fall back to the persisted profile layout. Overlay variants use a transparent page background. Title/action-safe guides and camera exclusion rectangles appear only when explicitly enabled for rehearsal.
+
+### Assets and licensing
+
+The Asset Manager accepts PNG, JPEG, WebP, MP3, WAV, OGG, MP4, and WOFF2 up to 25 MB. Server-owned filenames, path normalization, MIME allowlists, checksums, immutable public URLs, reference protection, and disabled SVG/HTML/executable uploads prevent active-content and traversal attacks. Files live in `data/presentation-assets/`, outside source control. Metadata is included in JSON backups; copy that directory separately for binary backup. Users are responsible for recording licensing and attribution and confirming broadcast rights. Bundled audio uses original WebAudio oscillator tones only; no commercial recordings or font files are included.
+
+### Audio routing
+
+Program audio has Master, Music, Stingers, UI, Timer, D20, Winner, and Ambient groups with bounded volumes and mute state. Audio cues carry unique IDs so refresh does not duplicate them. In OBS, enable **Control audio via OBS**, monitor through Advanced Audio Properties, and mute the local Browser Source monitor to prevent duplicate playback. Host Preview is silent unless explicitly previewed; Program defaults to audience-only audio. Browser autoplay policy may require one initial interaction.
+
+### Phase 4B OBS rehearsal
+
+1. Add full, overlay, score bug, question, and lower-third Browser Sources using the URLs above.
+2. Test at 1920×1080 at both 30 and 60 FPS; confirm no scrollbars or layout shift.
+3. Open Host and three Audience clients. Preview Intro and verify Program is unchanged, then Take it.
+4. Exercise every transition, Cut, queue cancellation, resync, reduced motion, and animation disable.
+5. Run board layouts with four and five categories, long category/question text, and two/eight players.
+6. Show question, answer, score graphic, D20, scores, intermission, winner, and credits.
+7. Test overlay transparency, safe guides, missing-asset fallbacks, Master mute, cue playback, and Browser Source audio monitoring.
+8. Refresh each Audience client and restart the server; confirm Program/layout restore and no cue duplicates.
+9. Record a sample at normal livestream viewing size and verify title/action safe areas and text readability.
+
+Physical OBS capture, audio-device routing, and recorded playback remain operator-required checks because CI cannot access the local OBS installation.
+
+### Backup and limitations
+
+JSON backup includes themes, profiles, templates, Program states, audio profiles, cue mappings, safe areas, and asset metadata. Old backups restore with built-in defaults. Binary assets require a separate copy of `data/presentation-assets`.
+
+The presentation editor intentionally is not a freeform motion-graphics designer. Generated tones are placeholders, automatic music crossfade is represented by persisted cue/group state rather than a multitrack mixer, image dimensions/video duration are not yet probed, and screenshot baselines may vary if operators install different local fonts.
+
+## Phase 4C contestant experience
+
+Phase 4C adds the phone-first `/#play` and `/#play/JOINCODE` routes, contestant sessions, ready checks, teams, a server-authoritative buzzer, host adjudication, steals, response timing, reconnection, and gameplay statistics. The contestant route has no administrative navigation and receives a dedicated projection that omits hidden answers, alternate answers, notes, sources, filesystem paths, internal IDs, action history, device diagnostics, and host-control data.
+
+### Join codes and contestant sessions
+
+From an in-progress Host Console, select **Open joins**, then share the displayed link or seven-character code. Codes use cryptographically secure randomness and omit ambiguous characters. They are case-insensitive, expire, and can be locked, revoked, or regenerated; regeneration immediately invalidates the prior code. An optional PIN is stored with a salted scrypt hash. Reconnect tokens contain 256 bits of randomness and only SHA-256 hashes are stored. Refreshing a contestant page restores its identity from local browser storage. A reconnect request rotates the token; removed and revoked sessions fail immediately. Opening the same session in a second tab replaces the first connection by default.
+
+Join, reconnect, and buzz attempts are rate-limited. Names reject markup and control characters, and avatar/color values use server allowlists. Invalid codes and PINs return the same generic error to limit enumeration. This is designed for a trusted LAN or private beta; place it behind an authenticated reverse proxy before exposing it to the public internet.
+
+### Ready checks, teams, and buzzing
+
+The host can open/reset a ready check, lock joins, inspect connection/readiness/device count and approximate connection quality, and remove a session. Individual mode gives each contestant a scoring participant. Team mode maps every approved team device to one scoring participant; the first team device to buzz locks the whole team out of additional positions.
+
+The buzzer state machine is `disabled → armed → open → answering → resolved`, with `locked`, `steal-open`, and `cancelled` branches. Manual opening is the default. Each buzz includes an idempotency key, session, buzzer revision, sequence, and diagnostic client timestamp. SQLite `BEGIN IMMEDIATE` plus a revision-guarded update creates exactly one winner. Server receive order is authoritative; client time never determines placement. Network latency can affect arrival order, so this is server-order fairness—not a claim of physically simultaneous or scientifically precise reaction measurement.
+
+Correct/incorrect/no-answer/technical-fault decisions remain host-only. Correct answers call the existing server scoring path, including D20 multipliers and bonuses. A Steal Enabled modifier makes an incorrect respondent ineligible and opens the buzzer to the others. Positive scoring is recorded through the existing action ledger, preventing a second award. Correct and incorrect adjudications can be safely undone while preserving immutable buzz-attempt history. The separate 15-second response timer starts on a winning buzz and supports pause, resume, and reset without changing the question timer.
+
+### Backup and restore
+
+JSON backups include safe join settings, team/participant links, contestant metadata, buzzer history, attempts, and aggregate statistics. They never include raw reconnect tokens, active secret hashes, rate-limit state, or WebSocket state. Restoring invalidates active codes and sessions; contestants must join again. Before a rehearsal or import, stop the server and copy `data/geek-trivia.db`. Restore that file while the server is stopped to recover the exact prior live-session state.
+
+### Phase 4C LAN rehearsal
+
+1. Back up the database, start the app, and open Host plus the OBS Audience Display.
+2. Open joins and connect at least four phones using the displayed URL/code; use wired and Wi-Fi clients when possible.
+3. Ready every device, lock joins, and verify one intentionally poor connection is labeled without showing misleading millisecond precision.
+4. Open a question and have two devices buzz together; verify exactly one winner and lockout messaging everywhere.
+5. Mark the winner incorrect, run a steal, then mark the new responder correct.
+6. Apply a Double XP D20 result on another question, award it, and verify the server-computed score on Host, Audience, and phone.
+7. Undo the award/adjudication and confirm scores and buzzer state restore without changing buzz history.
+8. Refresh one phone, briefly disable its Wi-Fi, and verify identity/state recovery. Open a duplicate tab and confirm the older tab is replaced.
+9. Remove one contestant, regenerate the code, and confirm both the removed session and old code fail.
+10. Complete the episode and confirm contestant input is read-only. Record the session and review touch target size, messages, orientation, zoom, reduced motion, and OBS readability.
+
+Automated tests cannot perform the physical Wi-Fi, phone haptics/audio, OBS capture, or device-orientation portions; those remain an operator sign-off.
+
+### Known Phase 4C limitations and next phase
+
+The supported show limit remains eight contestants even though the development load tool stresses 100. Server restart restores persisted contestant identity and state, but connected browsers must reconnect. Server-order fairness cannot remove real network latency. Manual responder selection, captain-only team configuration, queued-responder advancement, a QR inside the temporary Audience join banner, and public-internet identity/authentication hardening are recommended for Phase 4D together with final-round play and richer diagnostics.
+
+## Theme Designer
+
+Open **Theme Designer** from the main navigation or **Edit active theme** in Host Console Broadcast Controls. Built-in themes are read-only; duplicate one to create an editable local theme. The three-column workspace provides setting groups, a deterministic Program renderer preview, sample data and scene/layout/resolution selectors, and typed inspector controls for colors, typography, branding assets, panels, board, question, answer, scoreboard, timer, D20, lower thirds, transitions, layouts, safe areas, accessibility, and normalized element positions.
+
+Saving creates a private draft only. It never changes an Audience Display. **Publish** validates the complete theme, creates an immutable version, and updates any episode using that theme. **Revert** discards the draft; restoring a historical version loads that version into the draft so it can be reviewed before a new publish. Severe contrast, missing assets, invalid values, unsafe font/CSS-shaped input, and incompatible imports are blocked with section-level messages. JSON exports carry a compatibility version and asset references; imports report missing assets and safely clear unresolved optional branding references.
+
+For a clean OBS theme rehearsal, issue the temporary preview link with **OBS preview**. The token expires after two hours and exposes only deterministic sample data—never episode questions, answers, notes, participants, scores, or control state. Published previews need no token:
+
+```text
+http://localhost:8787/#theme-preview/THEME_ID?scene=board&layout=full&sample=eight-players
+```
+
+Useful query values include all Program scenes; `full`, `overlay`, `scorebug`, `question`, and `lowerthird` layouts; and `empty`, `two-players`, `four-players`, `eight-players`, `long-copy`, `negative`, `tie`, `natural-1`, `natural-20`, `timer-warning`, `timer-expired`, and `winner` samples. Preview and Audience Display share the same renderer, so theme behavior does not fork between editor and broadcast code.
+
+### Theme backup and restore
+
+Before major theme work, stop the server and copy `data/geek-trivia.db` plus `data/presentation-assets/`. The application JSON backup includes theme drafts, published configurations, version history, presets, and asset metadata, but binary assets must still be copied separately. Restore the prior database and asset directory while the server is stopped, then run migrations and restart the app. Old databases and backups receive compatible defaults through migration; generated SQLite files and uploaded assets remain outside source control.
+
+### Theme rehearsal checklist
+
+1. Duplicate every built-in theme and confirm built-ins cannot be edited or deleted.
+2. Change primary color, question font/size, board radius/gap, logo asset, and timer position; save the draft and confirm a live Audience Display remains unchanged.
+3. Exercise all scenes, layouts, sample states, 1920×1080 and smaller preview sizes, transparency checkerboard, camera simulation, safe areas, two/eight players, long text, negative scores, ties, natural 1/20, and timer warning/expired states.
+4. Publish and confirm all connected Audience Displays using the theme update. Refresh the browser and restart the server to verify persistence.
+5. Restore an older version, review it as a draft, publish it, then export/import the theme JSON.
+6. Test reduced motion, keyboard navigation, 200% browser zoom, invalid colors/fonts/sizes, severe contrast confirmation, missing assets, and a deliberately malformed import.
+7. Add the preview route to a 1920×1080 OBS Browser Source and record full and transparent layouts at 30 and 60 FPS.
+
+Physical OBS capture, installed-font rendering, camera compositing, audio routing, and recorded-playback review remain operator-required checks outside automated CI.
+
+### Local broadcast fonts
+
+The Asset Manager accepts signature-validated TTF, OTF, and WOFF2 files. Uploaded fonts are stored in `data/presentation-assets/`, suggested by name in every Theme Designer typography role, and loaded only when the published theme uses them. Matching file checksums are imported once. Font binaries are deliberately excluded from Git and must be copied with the presentation-assets directory during backup.
+
+To import a directory of operator-supplied fonts:
+
+```bash
+npm run fonts:import -- /path/to/font-directory
+```
+
+The importer records each font as operator supplied. Confirm the creator's license permits livestream, recording, commercial, and redistribution use as applicable. A free download or fan-site archive is not itself proof of a permissive license; keep license documents alongside your external backup.
+
+For the complete Google Fonts catalog, enable the Web Fonts Developer API and place a restricted key in the ignored `.env.local` file:
+
+```text
+GOOGLE_FONTS_API_KEY=your_key
+```
+
+Restart the server after changing the file. Theme Designer retrieves catalog metadata through the Node server, never sends the key to the browser, and downloads only a selected family's regular face. Downloaded files are signature validated, checksum deduplicated, and cached in `data/presentation-assets/` for local/offline OBS playback. The app uses the macOS system certificate authorities for this connection. Review the selected family's Google Fonts license before broadcast use.
+
+### Rounded D20 presentation
+
+The host preview and audience D20 now use the rounded physics renderer from the Nerd Wars D20 demo. Select a finish in D20 Settings or the Theme Designer: the three existing presets remain compatible, alongside Ember, Violet, Mint, Ocean, Ruby, Gold, Ice, Rose, Graphite and Ivory.
+
+The server still chooses the result and applies the existing effects, awards and undo rules. The client records a deterministic throw from the roll timestamp, labels its upward face with that result, and synchronizes playback to the original timestamp. Rejoining an expired roll shows the result without replaying its sound. On landing, the top number briefly glows and a soft ascending flourish follows the existing D20 sound/volume controls. Host previews stay muted; audience master mute, reduced audio and `?audio=off` suppress D20 audio. Reduced motion and unavailable WebGL retain a numeric result fallback.
+
+The renderer is loaded only for D20 presentation, generates its mesh and number textures locally, and no longer requires `public/models/D20.glb`. No database migration is required. Deploy with the project's normal `npm ci` and `npm run build` workflow.

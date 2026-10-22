@@ -1,0 +1,26 @@
+body.host-dark:has(.host-console){background:#080d18;color:#e8edf7}
+.host-dark .host-console{color:#e8edf7}
+.host-dark .host-console .show-controls,.host-dark .host-console .host-column,.host-dark .host-console .host-side>section,.host-dark .host-console .timer-panel,.host-dark .host-console .private-question,.host-dark .host-console .history,.host-dark .host-console .video-feed-controls{background:#111a2b;color:#e8edf7;border-color:#536788}
+.host-dark .host-console .host-column{background:#172238}
+.host-dark .host-console .live-square{background:#253657;color:#f8fafc;border:1px solid #52678d}
+.host-dark .host-console .live-square.state-completed{background:#1f6a4b}
+.host-dark .host-console .live-square.state-skipped{background:#46536a}
+.host-dark .host-console .live-square.state-opened{background:#4a3712}
+.host-dark .host-console input,.host-dark .host-console select,.host-dark .host-console textarea{background:#0a1221;color:#f8fafc;border-color:#536788}
+.host-dark .host-console .secondary{background:#2b3b58;color:#f8fafc}
+.host-dark .host-console .host-dark-toggle{background:#f3c64e;color:#17120a;font-weight:800}
+.host-dark .host-console .live-score{border-color:#34445f}
+.host-dark .host-console .video-feed-row{background:#172238;border-color:#34445f;border-radius:8px;margin-top:8px;padding:10px}
+.host-dark .host-console .video-feed-controls .field-help{color:#b8c4d9}
+.host-dark .host-console .video-feed-controls input::placeholder{color:#7f90ad}
+.host-dark .host-console .warning{background:#44350d;color:#fff1ae;border-color:#e5a000}
+.host-dark .host-console .error{background:#4a1820;color:#ffd9df}
+.host-dark .host-console a.text,.host-dark .host-console button.text{color:#aab8ff}
+.host-dark .team-control-card{background:#172238;color:#e8edf7;border-color:#3e5274}
+.host-dark .team-control-card.connected{border-color:#36b676}
+.host-dark .team-card-status span,.host-dark .buzzer-state{background:#273753;color:#e8edf7}
+.host-dark .team-control h2,.host-dark .team-control-status,.host-dark .team-advanced summary{color:#f3f6ff}
+.host-dark .team-score-actions .team-remove{color:#ffd9df;border-color:#8d3d4a;background:#401923}
+.host-dark .team-camera-missing{color:#aebbd0}
+.host-dark .team-member-roster{background:#101a2d;border-color:#34445f}.host-dark .team-member-roster>strong,.host-dark .team-member-roster small,.host-dark .team-member-roster p{color:#aebbd0}
+.host-dark .team-advanced{border-color:#34445f}

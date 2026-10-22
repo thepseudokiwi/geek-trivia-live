@@ -1,0 +1,2 @@
+import { db } from '../server/db/database.js';import { questionInventory } from '../server/questionImport.js';
+const inventory=questionInventory(db),categories=[...new Set(inventory.rows.map(x=>x.category))];console.log(`Active questions: ${inventory.total}`);console.log(['Category','D1','D2','D3','D4','D5','Complete boards'].join('\t'));for(const category of categories){const counts=[1,2,3,4,5].map(d=>Number(inventory.rows.find(x=>x.category===category&&x.difficulty===d)?.count??0));console.log([category,...counts,Math.min(...counts)].join('\t'))}db.close();

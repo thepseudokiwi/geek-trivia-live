@@ -1,0 +1,5 @@
+.contestant-app.contestant-cockpit{background:var(--player-screen-background,radial-gradient(circle at 50% -10%,#4d1a8a 0,#28145b 30%,#070814 72%))}
+.contestant-cockpit > .player-header{color:var(--player-name-color,#f8fafc);border-bottom-color:var(--player-divider-color,#334155)}
+.contestant-cockpit > .player-header h1{color:var(--player-name-color,#f8fafc)}
+.contestant-cockpit > .player-header > div:first-child > p strong{color:var(--player-xp-color,#f8fafc)}
+.contestant-cockpit > footer{border-top-color:var(--player-divider-color,#334155)}

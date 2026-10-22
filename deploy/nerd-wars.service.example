@@ -1,0 +1,21 @@
+[Unit]
+Description=Nerd Wars live trivia platform
+After=network.target
+
+[Service]
+Type=simple
+User=nerd-wars
+Group=nerd-wars
+WorkingDirectory=/opt/nerd-wars
+EnvironmentFile=/etc/nerd-wars.env
+ExecStart=/usr/bin/node --import tsx server/index.ts
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/nerd-wars /opt/nerd-wars/data/presentation-assets
+
+[Install]
+WantedBy=multi-user.target

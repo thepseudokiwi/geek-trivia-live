@@ -1,8 +1,23 @@
 node_modules/
 dist/
 data/*.db*
+data/presentation-assets/
 playwright-report/
 test-results/
 *.tsbuildinfo
 .DS_Store
+.env
+.env.local
+.env.local.rtf
+.env.*.local
 .tmp/
+.local/
+.pnpm-store/
+*.log
+.api*.log
+.vite*.log
+editorial-update-report.json
+import-report*.json
+Geek Trivia Show Ideas.html
+Geek Trivia Show Ideas_files/
+server/*.pdf
