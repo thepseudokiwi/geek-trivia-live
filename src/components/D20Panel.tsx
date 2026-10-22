@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { d20ThemeIds, d20Palettes } from "../../shared/d20Themes.js";
 import type {
   D20Mode,
   D20Effect,
@@ -191,9 +192,7 @@ export function D20Panel({
                 setSettings({ ...settings, theme: e.target.value as any })
               }
             >
-              <option value="neon_arcane">Neon Arcane</option>
-              <option value="classic_polyhedral">Classic Polyhedral</option>
-              <option value="holographic_scifi">Holographic Sci-Fi</option>
+              {d20ThemeIds.map(theme => <option key={theme} value={theme}>{d20Palettes[theme].name}</option>)}
             </select>
           </label>
           <label>

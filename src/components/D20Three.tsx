@@ -1,36 +1,88 @@
-import{useEffect,useMemo,useRef}from'react';
-import{Canvas,useFrame,useLoader}from'@react-three/fiber';
-import{GLTFLoader}from'three/examples/jsm/loaders/GLTFLoader.js';
-import*as THREE from'three';
-import type{D20Theme}from'../../shared/types';
+import { Component, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import * as THREE from 'three';
+import type { D20Theme } from '../../shared/types';
+import { d20Palette } from '../../shared/d20Themes';
+import { roundedD20 } from '../d20/geometry';
+import { dieTopology } from '../d20/topology';
+import { prepareD20Roll, sampleD20Roll } from '../d20/physics';
+import { elapsedRollMs, landingGlowStrength, landingGlowMs } from '../d20/timing';
 
-// Centers of the numbered islands in the model's baked UV atlas. Image Y is
-// flipped to WebGL UV space. The normals recovered from these islands let the
-// authored number—not an unrelated overlay—land facing the camera.
-const atlas:Array<[number,number,number]>=[
- [16,.094,.925],[10,.241,.925],
- [18,.544,.878],[17,.713,.878],[1,.881,.878],
- [12,.544,.719],[20,.713,.719],[2,.881,.719],
- [14,.544,.575],[9,.713,.575],[3,.881,.575],
- [19,.544,.394],[15,.713,.394],[8,.881,.394],
- [5,.544,.231],[7,.713,.231],[13,.881,.231],
- [4,.544,.087],[6,.713,.087],[11,.881,.087],
-];
-function numberedNormals(root:THREE.Object3D){
- const best=new Map<number,{distance:number;area:number;normal:THREE.Vector3}>();root.updateMatrixWorld(true);
- root.traverse(object=>{if(!(object instanceof THREE.Mesh))return;const geometry=object.geometry as THREE.BufferGeometry,position=geometry.getAttribute('position'),uv=geometry.getAttribute('uv'),index=geometry.index;if(!position||!uv)return;const count=index?index.count:position.count;
-  for(let offset=0;offset<count;offset+=3){const ids=[0,1,2].map(step=>index?index.getX(offset+step):offset+step),points=ids.map(id=>new THREE.Vector3(position.getX(id),position.getY(id),position.getZ(id)).applyMatrix4(object.matrixWorld)),uvs=ids.map(id=>new THREE.Vector2(uv.getX(id),uv.getY(id))),center=uvs[0].clone().add(uvs[1]).add(uvs[2]).divideScalar(3);let nearest=atlas[0],distance=Infinity;for(const candidate of atlas){const d=(center.x-candidate[1])**2+(center.y-candidate[2])**2;if(d<distance){distance=d;nearest=candidate}}if(distance>.025)return;const cross=points[1].clone().sub(points[0]).cross(points[2].clone().sub(points[0])),area=cross.length()/2;if(area<1e-7)return;const previous=best.get(nearest[0]);if(!previous||distance<previous.distance*.75||distance<previous.distance*1.2&&area>previous.area)best.set(nearest[0],{distance,area,normal:cross.normalize()});
-  }
- });
- return Array.from({length:20},(_,index)=>best.get(index+1)?.normal??new THREE.Vector3(0,0,1));
+type Props = { result: number; theme: D20Theme; durationMs: number; rolledAt: string; onLanded: () => void };
+function numberTexture(value: number, color: string, glow = false) {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas unavailable');
+  context.fillStyle = color; context.font = '600 138px Arial';
+  context.textAlign = 'center'; context.textBaseline = 'middle';
+  if (glow) { context.shadowColor = '#ffffff'; context.shadowBlur = 23; }
+  const paint = () => { context.fillText(String(value), 128, 137); if (value === 6 || value === 9) context.fillRect(109, 208, 38, 6); };
+  if (glow) { paint(); paint(); } paint();
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
+const numberedFaces = dieTopology.faces.map((face, index) => {
+  const [a,b,c] = face.map(vertex => dieTopology.vertices[vertex]);
+  const center = a.clone().add(b).add(c).multiplyScalar(1/3), normal = dieTopology.normals[index];
+  const up = a.clone().sub(center).normalize(), right = new THREE.Vector3().crossVectors(up,normal).normalize();
+  return { center: center.addScaledVector(normal,.007), normal, quaternion: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(right,up,normal)) };
+});
 
-function Die({result,durationMs,onLanded}:{result:number;theme:D20Theme;durationMs:number;onLanded:()=>void}){
- const gltf=useLoader(GLTFLoader,'/models/D20.glb'),group=useRef<THREE.Group>(null),started=useRef(performance.now()),reported=useRef(false),model=useMemo(()=>{const clone=gltf.scene.clone(true),box=new THREE.Box3().setFromObject(clone),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3()),scale=2/Math.max(size.x,size.y,size.z);clone.position.sub(center);clone.scale.multiplyScalar(scale);clone.traverse(object=>{if(object instanceof THREE.Mesh){object.castShadow=true;object.receiveShadow=true;const multiple=Array.isArray(object.material),sources:THREE.Material[]=multiple?object.material:[object.material],materials=sources.map(source=>{const material=source.clone();if(material instanceof THREE.MeshStandardMaterial){material.color.set('#ffffff');if(material.map){material.map.colorSpace=THREE.SRGBColorSpace;material.map.anisotropy=8}if(material.normalMap){material.normalMap.colorSpace=THREE.NoColorSpace;material.normalMap.anisotropy=8}material.needsUpdate=true}return material});object.material=multiple?materials:materials[0]}});return clone},[gltf.scene]),normals=useMemo(()=>numberedNormals(gltf.scene),[gltf.scene]),target=useMemo(()=>new THREE.Quaternion().setFromUnitVectors(normals[result-1],new THREE.Vector3(0,0,1)),[normals,result]),turns=4+(result%3),direction=result%2?1:-1,spinAxis=useMemo(()=>new THREE.Vector3(.72*direction,1,.48).normalize(),[direction]),settleStart=.78,tumbleAt=(progress:number)=>{const decay=(1-Math.exp(-2.15*progress))/(1-Math.exp(-2.15)),angle=(turns*2.35+.7)*Math.PI*2*decay;return new THREE.Quaternion().setFromAxisAngle(spinAxis,angle)},settleQuaternion=useMemo(()=>tumbleAt(settleStart),[spinAxis,turns]);
- useEffect(()=>{started.current=performance.now();reported.current=false},[result,durationMs]);
- useFrame(()=>{if(!group.current)return;const raw=Math.min(1,(performance.now()-started.current)/Math.max(1,durationMs)),impacts=[0,.24,.46,.65,.8,.91,1],heights=[.95,.56,.3,.14,.055,.01],found=impacts.findIndex((time,index)=>index>0&&raw<=time),segment=Math.max(0,Math.min(heights.length-1,found-1)),start=impacts[segment],end=impacts[segment+1],local=Math.max(0,Math.min(1,(raw-start)/(end-start))),ballistic=4*heights[segment]*local*(1-local),settle=Math.max(0,Math.min(1,(raw-settleStart)/(1-settleStart))),smooth=settle*settle*(3-2*settle),ground=-.52*(1-smooth),startX=direction*(1.55+(result%4)*.06),impactDistance=Math.min(...impacts.slice(1).map(time=>Math.abs(raw-time))),compression=Math.max(0,1-impactDistance/.014)*(1-raw)*.075;group.current.position.set(startX*Math.pow(1-raw,1.35),ground+ballistic,0);if(raw<settleStart)group.current.quaternion.copy(tumbleAt(raw));else group.current.quaternion.copy(settleQuaternion).slerp(target,smooth);group.current.scale.set(1+compression*.45,1-compression,1+compression*.45);if(raw===1&&!reported.current){reported.current=true;onLanded()}});
- return <group ref={group}><primitive object={model}/></group>
+function Die({ result, theme, durationMs, rolledAt, onLanded }: Props) {
+  const group = useRef<THREE.Group>(null), glow = useRef<THREE.Mesh<THREE.PlaneGeometry,THREE.MeshBasicMaterial>>(null);
+  const reported = useRef(false), callback = useRef(onLanded); callback.current = onLanded;
+  const { camera, size, invalidate } = useThree();
+  const roll = useMemo(() => prepareD20Roll(result, rolledAt), [result, rolledAt]);
+  const geometry = useMemo(() => roundedD20(dieTopology.vertices,dieTopology.faces,dieTopology.normals), []);
+  const palette = d20Palette(theme);
+  const textures = useMemo(() => roll.faceValues.map(value => numberTexture(value,palette.numbers)), [roll,palette]);
+  const glowTexture = useMemo(() => numberTexture(result,'#ffffff',true), [result]);
+  const final = roll.samples[roll.samples.length - 1].position;
+  const bound = useMemo(() => Math.max(...roll.samples.map(sample => Math.abs(sample.position.x-final.x)))+1.3, [roll,final]);
+  useEffect(() => () => { geometry.dispose(); }, [geometry]);
+  useEffect(() => () => { textures.forEach(texture => texture.dispose()); }, [textures]);
+  useEffect(() => () => { glowTexture.dispose(); }, [glowTexture]);
+  useFrame(() => {
+    if (!group.current) return;
+    const elapsed = elapsedRollMs(rolledAt,durationMs), progress = durationMs > 0 ? Math.min(1,elapsed/durationMs) : 1;
+    const sample = sampleD20Roll(roll,progress);
+    group.current.position.copy(sample.position).sub(new THREE.Vector3(final.x,0,final.z));
+    group.current.quaternion.copy(sample.rotation);
+    const zoom = THREE.MathUtils.smoothstep(progress,.82,1);
+    const wide = Math.max(12,bound / Math.tan(THREE.MathUtils.degToRad(19)) / Math.max(.35,size.width/size.height));
+    const distance = THREE.MathUtils.lerp(wide,6.5,zoom);
+    camera.position.set(0,distance,distance*.31); camera.lookAt(0,0,0);
+    if (glow.current) { const strength=landingGlowStrength(elapsed-durationMs); glow.current.visible=strength>0; glow.current.material.opacity=strength*.95; }
+    if (progress === 1 && !reported.current) { reported.current=true; callback.current(); }
+    if (elapsed < durationMs+landingGlowMs) invalidate();
+  });
+  const top = numberedFaces[roll.topFace];
+  return <group ref={group}>
+    <mesh geometry={geometry} castShadow receiveShadow dispose={null}><meshStandardMaterial color={palette.surface} roughness={.27} metalness={.25}/></mesh>
+    {numberedFaces.map((face,index) => <mesh key={index} position={face.center} quaternion={face.quaternion} renderOrder={1}>
+      <planeGeometry args={[.58,.58]}/><meshBasicMaterial map={textures[index]} transparent depthWrite={false} polygonOffset polygonOffsetFactor={-1}/>
+    </mesh>)}
+    <mesh ref={glow} position={top.center.clone().addScaledVector(top.normal,.002)} quaternion={top.quaternion} visible={false} renderOrder={2}>
+      <planeGeometry args={[.58,.58]}/><meshBasicMaterial map={glowTexture} color={palette.glow} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false}/>
+    </mesh>
+  </group>;
 }
-
-useLoader.preload(GLTFLoader,'/models/D20.glb');
-export function D20Three({result,theme,durationMs,onLanded}:{result:number;theme:D20Theme;durationMs:number;onLanded:()=>void}){return <div className="d20-three" role="img" aria-label={`D20 result ${result}`}><Canvas dpr={[1,2]} camera={{position:[0,0,4.6],fov:42}} shadows gl={{alpha:true,antialias:true,powerPreference:'high-performance',toneMapping:THREE.ACESFilmicToneMapping,toneMappingExposure:1.35}} fallback={null}><ambientLight intensity={1.7}/><hemisphereLight args={['#ffffff','#251234',2.4]}/><directionalLight position={[4,5,6]} intensity={3.2}/><pointLight position={[-4,-2,3]} intensity={2.2} color="#67e8f9"/><Die result={result} theme={theme} durationMs={durationMs} onLanded={onLanded}/></Canvas></div>}
+function Fallback({result}:{result:number}) { return <div className="d20-webgl-fallback" role="img" aria-label={`D20 result ${result}`}>{result}</div>; }
+class RendererBoundary extends Component<{children:ReactNode;result:number},{failed:boolean}> {
+  state = {failed:false};
+  static getDerivedStateFromError() { return {failed:true}; }
+  render() { return this.state.failed ? <Fallback result={this.props.result}/> : this.props.children; }
+}
+export function D20Three(props: Props) {
+  return <div className="d20-three" role="img" aria-label={`D20 result ${props.result}`}>
+    <RendererBoundary key={props.rolledAt} result={props.result}>
+      <Canvas frameloop="demand" dpr={[1,2]} camera={{position:[0,12,3.72],fov:38}} shadows gl={{alpha:true,antialias:true,powerPreference:'high-performance'}} fallback={<Fallback result={props.result}/>}>
+        <hemisphereLight args={['#fff4dc','#3b4642',3]}/>
+        <directionalLight position={[-4,9,5]} intensity={4} color="#ffeed6" castShadow shadow-mapSize={[1024,1024]} shadow-camera-left={-8} shadow-camera-right={8} shadow-camera-top={8} shadow-camera-bottom={-8} shadow-bias={-.001}/>
+        <directionalLight position={[4,3,-4]} intensity={2} color="#b8d5e6"/>
+        <mesh rotation={[-Math.PI/2,0,0]} position={[0,-.015,0]} receiveShadow><planeGeometry args={[200,200]}/><shadowMaterial opacity={.38}/></mesh>
+        <Die key={props.rolledAt} {...props}/>
+      </Canvas>
+    </RendererBoundary>
+  </div>;
+}
