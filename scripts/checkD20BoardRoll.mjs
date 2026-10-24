@@ -27,9 +27,22 @@ const player = {
 };
 const browser = await chromium.launch({ headless: true, channel: 'msedge' });
 const errors = [], report = [];
+function recordD20Phases() {
+  window.__d20Phases=[];
+  let previousRoot, previousPhase;
+  new MutationObserver(()=>{
+    const root=document.querySelector('.d20-board-roll');
+    if(!root)return;
+    const phase=root.classList.contains('revealed')?'revealed':root.classList.contains('landed')?'landed':'rolling';
+    if(root===previousRoot&&phase===previousPhase)return;
+    previousRoot=root;previousPhase=phase;
+    window.__d20Phases.push({phase,at:Date.now(),value:root.querySelector('.d20-corner-number')?.textContent,details:root.querySelectorAll('.d20-corner-details .selected-square').length});
+  }).observe(document,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+}
 await mkdir('.local/d20-board-check', { recursive: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+  await page.addInitScript(recordD20Phases);
   await page.addInitScript(() => {
     window.__d20LandingSounds = [];
     const original = AudioContext.prototype.createOscillator;
@@ -77,17 +90,17 @@ try {
   assert(canvas.width > 1800 && canvas.height > 700, `The die must roll over the board, not inside the corner: ${JSON.stringify(canvas)}`);
   await page.waitForTimeout(500);
   await page.screenshot({ path: '.local/d20-board-check/rolling.jpg' });
-  assert.deepEqual(await page.evaluate(()=>window.__d20LandingSounds), [], 'Landing sounds must not play during the throw');
   assert.equal(await page.locator('.d20-board-roll .d20-three').evaluate(element=>getComputedStyle(element).filter),'none','Do not paint a second CSS shadow around the moving die');
-  await page.locator('.d20-board-roll.landed:not(.revealed)').waitFor();
-  assert.equal(await page.locator('.d20-corner-number').textContent(),'LANDED');
-  assert.equal(await page.locator('.d20-corner-details .selected-square').count(),0);
-  await page.screenshot({path:'.local/d20-board-check/landing-glow.jpg'});
   await page.locator('.d20-board-roll.revealed').waitFor();
   assert.equal(await page.locator('.d20-corner-number').textContent(), '12');
+  const phases=await page.evaluate(()=>window.__d20Phases.slice(-3));
+  assert.deepEqual(phases.map(event=>event.phase),['rolling','landed','revealed']);
+  assert.equal(phases[1].value,'LANDED');assert.equal(phases[1].details,0);
+  assert(phases[2].at-phases[1].at>=430,'Keep the result hidden during the landing flourish');
   const cue = await page.evaluate(()=>window.__d20LandingSounds.find(event=>event.type==='triangle'));
   assert(cue && cue.wall >= rollStarted + 1550, 'The landing cue must follow the rendered stop');
-  assert(Date.now()-cue.wall>=400,'The value must wait for the landing glow and sound');
+  assert(cue.wall>=phases[1].at-50,'The sound cannot precede the rendered stop');
+  assert(phases[2].at-cue.wall>=400,'The value must wait for the landing glow and sound');
   assert.equal(await page.locator('.d20-critical-popup').count(), 0);
   const after = await page.locator('.board-position').boundingBox();
   for (const key of ['x', 'y', 'width', 'height']) assert(Math.abs(before[key] - after[key]) < 1, `Board ${key} shifted during the throw: ${JSON.stringify({before,after})}`);
@@ -144,8 +157,23 @@ try {
   await contestant.screenshot({ path: '.local/d20-board-check/contestant-20.jpg' });
   report.push({ contestantEmbeddedBoard: 'passed' });
 
+  // Exercise motion inside a short, wide window as well as a normal monitor.
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.setViewportSize({width:1920,height:540});
+  sendRoll(12,0,2200);
+  await page.locator('.d20-board-roll.rolling canvas').waitFor();
+  for(let frame=1;frame<=3;frame++) {
+    await page.waitForTimeout(450);
+    await page.screenshot({path:`.local/d20-board-check/wide-motion-${frame}.jpg`});
+    assert.equal(await page.locator('.d20-corner-number').textContent(),'ROLLING');
+  }
+  await page.locator('.d20-board-roll.revealed').waitFor();
+  assert.equal(await page.locator('.d20-corner-number').textContent(),'12');
+  report.push({wideWindowMotion:'passed'});
+
   // A slow 3D download must not let a wall-clock timer reveal the value first.
   const cold = await browser.newPage({viewport:{width:1280,height:720}});
+  await cold.addInitScript(recordD20Phases);
   const coldState = structuredClone(state);
   coldState.presentation.programScene='board';
   coldState.d20=null;
@@ -163,12 +191,12 @@ try {
   assert.equal(await cold.locator('.d20-corner-number').textContent(),'ROLLING');
   assert.equal(await cold.locator('.d20-corner-details .selected-square').count(),0);
   releaseRenderer();
-  await cold.locator('.d20-board-roll.landed:not(.revealed)').waitFor();
-  assert.equal(await cold.locator('.d20-corner-number').textContent(),'LANDED');
   await cold.locator('.d20-board-roll.revealed').waitFor();
+  assert.equal((await cold.evaluate(()=>window.__d20Phases.slice(-2)))[0].value,'LANDED');
   report.push({slowRendererReveal:'passed'});
 
   const fallback = await browser.newPage({viewport:{width:1280,height:720}});
+  await fallback.addInitScript(recordD20Phases);
   await fallback.addInitScript(()=>{
     const getContext=HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext=function(type,...args){
@@ -186,11 +214,11 @@ try {
   fallbackSocket.send(JSON.stringify({event:'state.public',data:fallbackState}));
   await fallback.locator('.d20-three .d20-webgl-fallback').waitFor();
   assert.equal(await fallback.locator('.d20-three .d20-webgl-fallback').textContent(),'D20');
-  await fallback.locator('.d20-board-roll.landed:not(.revealed)').waitFor();
-  assert.equal(await fallback.locator('.d20-corner-number').textContent(),'LANDED');
-  assert.equal(await fallback.locator('.d20-three .d20-webgl-fallback').textContent(),'D20');
   await fallback.locator('.d20-board-roll.revealed').waitFor();
-  assert.equal(await fallback.locator('.d20-three .d20-webgl-fallback').textContent(),'20');
+  const fallbackPhases=await fallback.evaluate(()=>window.__d20Phases.slice(-2));
+  assert.equal(fallbackPhases[0].value,'LANDED');assert.equal(fallbackPhases[0].details,0);
+  assert(fallbackPhases[1].at-fallbackPhases[0].at>=430);
+  assert.equal(await fallback.locator('.d20-three .d20-webgl-fallback').textContent(),String(fallbackState.d20.result));
   report.push({webglFallbackReveal:'passed'});
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ report, errors }, null, 2));

@@ -6,6 +6,7 @@ import { d20Palette } from '../../shared/d20Themes';
 import { roundedD20 } from '../d20/geometry';
 import { dieTopology } from '../d20/topology';
 import { prepareD20Roll, sampleD20Roll } from '../d20/physics';
+import { boardRollFrame } from '../d20/boardCamera';
 import { elapsedRollMs, landingGlowStrength, landingGlowMs } from '../d20/timing';
 
 type Props = { result: number; theme: D20Theme; durationMs: number; rolledAt: string; onLanded: (at:number) => void; space?: 'tray' | 'board'; resultVisible?:boolean; landingAt?:number|null };
@@ -34,6 +35,7 @@ function Die({ result, theme, durationMs, rolledAt, onLanded, space = 'tray', la
   const landed = useRef(landingAt), landingFrame = useRef<number|undefined>(undefined);
   const { camera, size, invalidate } = useThree();
   const roll = useMemo(() => prepareD20Roll(result, rolledAt, space), [result, rolledAt, space]);
+  const boardFrame = useMemo(() => space === 'board' ? boardRollFrame(roll,size.width/size.height) : null, [roll,space,size.width,size.height]);
   const geometry = useMemo(() => roundedD20(dieTopology.vertices,dieTopology.faces,dieTopology.normals), []);
   const palette = d20Palette(theme);
   const textures = useMemo(() => roll.faceValues.map(value => numberTexture(value,palette.numbers)), [roll,palette]);
@@ -45,20 +47,20 @@ function Die({ result, theme, durationMs, rolledAt, onLanded, space = 'tray', la
   useEffect(() => () => { glowTexture.dispose(); }, [glowTexture]);
   useEffect(() => () => { if (landingFrame.current !== undefined) cancelAnimationFrame(landingFrame.current); }, []);
   useEffect(() => {
-    if (space !== 'board' || !(camera instanceof THREE.OrthographicCamera)) return;
-    const halfHeight = 10 / Math.max(.35, size.width / size.height);
-    camera.left = -10; camera.right = 10; camera.top = halfHeight; camera.bottom = -halfHeight;
+    if (!boardFrame || !(camera instanceof THREE.OrthographicCamera)) return;
+    camera.left = -boardFrame.halfWidth; camera.right = boardFrame.halfWidth; camera.top = boardFrame.halfHeight; camera.bottom = -boardFrame.halfHeight;
     camera.position.set(0, 20, 5); camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix(); camera.updateMatrixWorld(); invalidate();
-  }, [camera, size.width, size.height, space, invalidate]);
+  }, [camera, boardFrame, invalidate]);
   useFrame(() => {
     if (!group.current) return;
     const elapsed = elapsedRollMs(rolledAt,durationMs), progress = durationMs > 0 ? Math.min(1,elapsed/durationMs) : 1;
     const sample = sampleD20Roll(roll,progress);
-    if (space === 'board') {
-      const halfHeight = 10 / Math.max(.35, size.width / size.height);
-      group.current.position.set(sample.position.x, sample.position.y, sample.position.z * Math.max(.22, (halfHeight - 1.4) / 5));
+    if (boardFrame) {
+      group.current.scale.setScalar(boardFrame.dieScale);
+      group.current.position.set(sample.position.x, sample.position.y * boardFrame.dieScale, sample.position.z * boardFrame.depthScale);
     } else {
+      group.current.scale.setScalar(1);
       group.current.position.copy(sample.position).sub(new THREE.Vector3(final.x,0,final.z));
       const zoom = THREE.MathUtils.smoothstep(progress,.82,1);
       const wide = Math.max(12,bound / Math.tan(THREE.MathUtils.degToRad(19)) / Math.max(.35,size.width/size.height));

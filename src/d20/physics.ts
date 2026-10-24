@@ -4,7 +4,7 @@ import { seededRandom } from '../../shared/random.js';
 import { dieTopology } from './topology.js';
 
 export interface DieSample { position: THREE.Vector3; rotation: THREE.Quaternion }
-export interface PreparedD20Roll { samples: DieSample[]; faceValues: number[]; topFace: number }
+export interface PreparedD20Roll { samples: DieSample[]; faceValues: number[]; topFace: number; sampleTimes?:number[] }
 const up = new THREE.Vector3(0, 1, 0);
 
 // The game server owns the result. This simulation only supplies a repeatable
@@ -75,12 +75,41 @@ export function prepareD20Roll(result: number, rollId: string, space: 'tray' | '
     [faceValues[topFace], faceValues[target]] = [faceValues[target], faceValues[topFace]];
     [faceValues[other], faceValues[targetOpposite]] = [faceValues[targetOpposite], faceValues[other]];
   }
-  return { samples, faceValues, topFace };
+  // Pace board throws by visible travel and rotation, rather than squeezing the
+  // high-speed launch plus a long stationary physics tail into the roll time.
+  const sampleTimes = board ? [0] : undefined;
+  if (sampleTimes) {
+    for (let i = 1; i < samples.length; i++) {
+      const distance = samples[i].position.distanceTo(samples[i-1].position);
+      const turn = samples[i].rotation.angleTo(samples[i-1].rotation);
+      sampleTimes.push(sampleTimes[i-1] + Math.max(.0001, distance/.45, turn/.3));
+    }
+    const total = sampleTimes[sampleTimes.length-1];
+    for (let i = 1; i < sampleTimes.length; i++) sampleTimes[i] /= total;
+  }
+  return { samples, faceValues, topFace, ...(sampleTimes ? {sampleTimes} : {}) };
 }
 
 export function sampleD20Roll(roll: PreparedD20Roll, progress: number): DieSample {
-  const f = THREE.MathUtils.clamp(progress, 0, 1) * (roll.samples.length - 1);
-  const index = Math.floor(f), next = Math.min(index + 1, roll.samples.length - 1), t = f - index;
+  const bounded = THREE.MathUtils.clamp(progress, 0, 1);
+  if (bounded === 0 || bounded === 1) {
+    const sample=roll.samples[bounded === 0 ? 0 : roll.samples.length-1];
+    return {position:sample.position.clone(),rotation:sample.rotation.clone()};
+  }
+  let index:number, next:number, t:number;
+  if (roll.sampleTimes) {
+    const phase = bounded * bounded * (3 - 2 * bounded);
+    let low = 0, high = roll.samples.length - 1;
+    while (low + 1 < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (roll.sampleTimes[middle] <= phase) low = middle; else high = middle;
+    }
+    index = low; next = high;
+    t = (phase - roll.sampleTimes[index]) / (roll.sampleTimes[next] - roll.sampleTimes[index]);
+  } else {
+    const f = bounded * (roll.samples.length - 1);
+    index = Math.floor(f); next = Math.min(index + 1, roll.samples.length - 1); t = f - index;
+  }
   if (t === 0) return { position: roll.samples[index].position.clone(), rotation: roll.samples[index].rotation.clone() };
   return { position: roll.samples[index].position.clone().lerp(roll.samples[next].position, t), rotation: roll.samples[index].rotation.clone().slerp(roll.samples[next].rotation, t) };
 }
