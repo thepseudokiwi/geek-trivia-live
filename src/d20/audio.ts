@@ -55,25 +55,38 @@ export function dieRollSound(durationMs: number, result: number, volume: number)
     noise.start();
     noise.stop(ctx.currentTime + seconds);
 
-    const landing = ctx.currentTime + seconds - 0.025,
-      thud = ctx.createOscillator(),
-      thudGain = ctx.createGain();
-    thud.type = "triangle";
-    thud.frequency.setValueAtTime(result === 1 ? 85 : 125, landing);
-    thud.frequency.exponentialRampToValueAtTime(55, landing + 0.11);
-    thudGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    thudGain.gain.setValueAtTime(0.8, landing);
-    thudGain.gain.exponentialRampToValueAtTime(0.0001, landing + 0.14);
-    thud.connect(thudGain).connect(master);
-    thud.start(landing);
-    thud.stop(landing + 0.15);
-
-    scheduleLandingFlourish(ctx, master, ctx.currentTime + seconds);
-
-    const closeTimer = window.setTimeout(() => void ctx.close(), seconds * 1000 + 1400);
-    return () => {
+    let stopped = false, landed = false;
+    let closeTimer: number | undefined;
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
       window.clearTimeout(closeTimer);
-      void ctx.close();
+      void ctx.close().catch(() => {});
+    };
+    return {
+      stop,
+      // The rendered final frame owns the landing cue, not an audio timer.
+      land() {
+        if (landed || stopped) return;
+        landed = true;
+        try { noise.stop(); } catch { /* The rattle may already have finished. */ }
+        rattle.gain.cancelScheduledValues(ctx.currentTime);
+        rattle.gain.setValueAtTime(0, ctx.currentTime);
+        void ctx.resume().then(() => {
+          if (stopped) return;
+          const landing = ctx.currentTime,
+            thud = ctx.createOscillator(), thudGain = ctx.createGain();
+          thud.type = 'triangle';
+          thud.frequency.setValueAtTime(result === 1 ? 85 : 125, landing);
+          thud.frequency.exponentialRampToValueAtTime(55, landing + .11);
+          thudGain.gain.setValueAtTime(.8, landing);
+          thudGain.gain.exponentialRampToValueAtTime(.0001, landing + .14);
+          thud.connect(thudGain).connect(master);
+          thud.start(landing); thud.stop(landing + .15);
+          scheduleLandingFlourish(ctx, master, landing);
+          closeTimer = window.setTimeout(stop, 1400);
+        }).catch(() => {});
+      },
     };
   } catch {
     /* OBS may block audio until explicitly enabled */

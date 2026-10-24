@@ -30,6 +30,18 @@ const errors = [], report = [];
 await mkdir('.local/d20-board-check', { recursive: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+  await page.addInitScript(() => {
+    window.__d20LandingSounds = [];
+    const original = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function(...args) {
+      const oscillator = original.apply(this,args), start=oscillator.start.bind(oscillator);
+      oscillator.start = function(at) {
+        window.__d20LandingSounds.push({type:oscillator.type,wall:Date.now(),at});
+        return start(at);
+      };
+      return oscillator;
+    };
+  });
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   let audienceSocket;
@@ -48,13 +60,15 @@ try {
       selectedSquare: selected, effectiveAwardXp: selected.value * (result === 20 ? 3 : 1),
       timerOverrideMs: null, stealEnabled: false,
       rolledAt: new Date(Date.now() - age).toISOString(), animationDurationMs: duration,
-      resultDisplayDurationMs: 5000, autoReturn: false, theme: 'gold', soundEnabled: false, volume: 0,
+      resultDisplayDurationMs: 5000, autoReturn: false, theme: 'gold', soundEnabled: true, volume: 0,
     };
     audienceSocket.send(JSON.stringify({ event: 'state.public', data: state }));
   };
   // Warm the lazy 3D renderer with an old roll so loading cannot hide the throw.
   sendRoll(12, 10000);
   await page.locator('.d20-board-roll canvas').waitFor();
+  await page.locator('body').click({position:{x:10,y:10}});
+  const rollStarted=Date.now();
   sendRoll(12);
   await page.locator('.d20-board-roll.rolling').waitFor();
   assert.equal(await page.locator('.d20-corner-number').textContent(), 'ROLLING');
@@ -63,12 +77,21 @@ try {
   assert(canvas.width > 1800 && canvas.height > 700, `The die must roll over the board, not inside the corner: ${JSON.stringify(canvas)}`);
   await page.waitForTimeout(500);
   await page.screenshot({ path: '.local/d20-board-check/rolling.jpg' });
-  await page.locator('.d20-board-roll.landed').waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.__d20LandingSounds), [], 'Landing sounds must not play during the throw');
+  assert.equal(await page.locator('.d20-board-roll .d20-three').evaluate(element=>getComputedStyle(element).filter),'none','Do not paint a second CSS shadow around the moving die');
+  await page.locator('.d20-board-roll.landed:not(.revealed)').waitFor();
+  assert.equal(await page.locator('.d20-corner-number').textContent(),'LANDED');
+  assert.equal(await page.locator('.d20-corner-details .selected-square').count(),0);
+  await page.screenshot({path:'.local/d20-board-check/landing-glow.jpg'});
+  await page.locator('.d20-board-roll.revealed').waitFor();
   assert.equal(await page.locator('.d20-corner-number').textContent(), '12');
+  const cue = await page.evaluate(()=>window.__d20LandingSounds.find(event=>event.type==='triangle'));
+  assert(cue && cue.wall >= rollStarted + 1550, 'The landing cue must follow the rendered stop');
+  assert(Date.now()-cue.wall>=400,'The value must wait for the landing glow and sound');
   assert.equal(await page.locator('.d20-critical-popup').count(), 0);
   const after = await page.locator('.board-position').boundingBox();
   for (const key of ['x', 'y', 'width', 'height']) assert(Math.abs(before[key] - after[key]) < 1, `Board ${key} shifted during the throw: ${JSON.stringify({before,after})}`);
-  report.push({ normalRoll: 'passed', before, after, canvas });
+  report.push({ normalRoll: 'passed', landingSoundAfterMs:cue.wall-rollStarted, before, after, canvas });
 
   sendRoll(20);
   await page.locator('.d20-critical-popup').waitFor();
@@ -90,7 +113,7 @@ try {
     report.push({ viewport, panel, popup });
   }
   sendRoll(20, 15000);
-  await page.locator('.d20-board-roll.landed').waitFor();
+  await page.locator('.d20-board-roll.revealed').waitFor();
   await page.waitForTimeout(150);
   assert.equal(await page.locator('.d20-critical-popup').count(), 0, 'Refreshing an old 20 must not replay the celebration');
   assert.equal(await page.locator('.d20-corner-number').textContent(), '20');
@@ -120,6 +143,55 @@ try {
   assert.equal(await frame.locator('.d20-corner-number').textContent(), '20');
   await contestant.screenshot({ path: '.local/d20-board-check/contestant-20.jpg' });
   report.push({ contestantEmbeddedBoard: 'passed' });
+
+  // A slow 3D download must not let a wall-clock timer reveal the value first.
+  const cold = await browser.newPage({viewport:{width:1280,height:720}});
+  const coldState = structuredClone(state);
+  coldState.presentation.programScene='board';
+  coldState.d20=null;
+  let releaseRenderer;
+  const rendererGate=new Promise(resolve=>{releaseRenderer=resolve});
+  await cold.route('**/assets/D20Three-*.js',async route=>{await rendererGate;await route.continue()});
+  let coldSocket;
+  await cold.routeWebSocket('**/ws?**',socket=>{coldSocket=socket;socket.send(JSON.stringify({event:'state.public',data:coldState}))});
+  await cold.goto(`${base}/#audience/${state.episodeId}`);
+  await cold.locator('.board-position').waitFor();
+  coldState.presentation.programScene='d20';
+  coldState.d20={...state.d20,rolledAt:new Date().toISOString(),animationDurationMs:400,soundEnabled:false};
+  coldSocket.send(JSON.stringify({event:'state.public',data:coldState}));
+  await cold.waitForTimeout(1000);
+  assert.equal(await cold.locator('.d20-corner-number').textContent(),'ROLLING');
+  assert.equal(await cold.locator('.d20-corner-details .selected-square').count(),0);
+  releaseRenderer();
+  await cold.locator('.d20-board-roll.landed:not(.revealed)').waitFor();
+  assert.equal(await cold.locator('.d20-corner-number').textContent(),'LANDED');
+  await cold.locator('.d20-board-roll.revealed').waitFor();
+  report.push({slowRendererReveal:'passed'});
+
+  const fallback = await browser.newPage({viewport:{width:1280,height:720}});
+  await fallback.addInitScript(()=>{
+    const getContext=HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext=function(type,...args){
+      return /webgl/i.test(type)?null:getContext.call(this,type,...args);
+    };
+  });
+  const fallbackState=structuredClone(coldState);
+  fallbackState.presentation.programScene='board';
+  let fallbackSocket;
+  await fallback.routeWebSocket('**/ws?**',socket=>{fallbackSocket=socket;socket.send(JSON.stringify({event:'state.public',data:fallbackState}))});
+  await fallback.goto(`${base}/#audience/${state.episodeId}`);
+  await fallback.locator('.board-position').waitFor();
+  fallbackState.presentation.programScene='d20';
+  fallbackState.d20={...fallbackState.d20,rolledAt:new Date().toISOString(),animationDurationMs:1000};
+  fallbackSocket.send(JSON.stringify({event:'state.public',data:fallbackState}));
+  await fallback.locator('.d20-three .d20-webgl-fallback').waitFor();
+  assert.equal(await fallback.locator('.d20-three .d20-webgl-fallback').textContent(),'D20');
+  await fallback.locator('.d20-board-roll.landed:not(.revealed)').waitFor();
+  assert.equal(await fallback.locator('.d20-corner-number').textContent(),'LANDED');
+  assert.equal(await fallback.locator('.d20-three .d20-webgl-fallback').textContent(),'D20');
+  await fallback.locator('.d20-board-roll.revealed').waitFor();
+  assert.equal(await fallback.locator('.d20-three .d20-webgl-fallback').textContent(),'20');
+  report.push({webglFallbackReveal:'passed'});
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ report, errors }, null, 2));
 } finally { await browser.close(); }
