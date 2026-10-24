@@ -29,6 +29,23 @@ describe('ported D20 presentation', () => {
     expect(()=>prepareD20Roll(0,'bad')).toThrow(RangeError);
     expect(()=>prepareD20Roll(21,'bad')).toThrow(RangeError);
   });
+  it('throws across the board on varied bounded paths while preserving the selected number', () => {
+    for (let result = 1; result <= 20; result++) {
+      const roll = prepareD20Roll(result, `board-travel-${result}`, 'board');
+      const xs = roll.samples.map(sample => sample.position.x), zs = roll.samples.map(sample => sample.position.z);
+      expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(14);
+      expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(2);
+      expect(Math.max(...xs.map(Math.abs))).toBeLessThan(9);
+      expect(Math.max(...zs.map(Math.abs))).toBeLessThan(5);
+      const last = sampleD20Roll(roll, 1);
+      const top = dieTopology.normals.map(normal => normal.clone().applyQuaternion(last.rotation).y);
+      expect(top[roll.topFace]).toBeGreaterThan(.998);
+      expect(roll.faceValues[top.indexOf(Math.max(...top))]).toBe(result);
+      expect(last.position.y).toBeCloseTo(dieTopology.inradius, 2);
+    }
+    expect(prepareD20Roll(20, 'shared-board-roll', 'board')).toEqual(prepareD20Roll(20, 'shared-board-roll', 'board'));
+    expect(prepareD20Roll(20, 'shared-board-roll', 'board').samples).not.toEqual(prepareD20Roll(20, 'different-board-roll', 'board').samples);
+  });
   it('rounds a closed mesh inward, with outward continuous normals and flat label faces', () => {
     const {vertices,faces,normals,inradius}=dieTopology;
     const geometry=roundedD20(vertices,faces,normals), position=geometry.getAttribute('position'), normal=geometry.getAttribute('normal');

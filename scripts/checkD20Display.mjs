@@ -7,7 +7,8 @@ state.timer.status = 'idle';
 state.videoFeeds = [];
 state.presentation.programScene = 'board';
 state.presentation.transition.kind = 'cut';
-state.presentation.animationsDisabled = true;
+state.presentation.animationsDisabled = false;
+state.presentation.reducedMotion = false;
 const browser = await chromium.launch({ headless: true, channel: 'msedge' });
 try {
  const page = await browser.newPage({ viewport: { width: Number(process.env.D20_CHECK_WIDTH || 1600), height: Number(process.env.D20_CHECK_HEIGHT || 900) } });
