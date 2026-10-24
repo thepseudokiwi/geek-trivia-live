@@ -7,9 +7,9 @@ import { roundedD20 } from '../d20/geometry';
 import { dieTopology } from '../d20/topology';
 import { prepareD20Roll, sampleD20Roll } from '../d20/physics';
 import { boardPixelRatio, boardRollFrame } from '../d20/boardCamera';
-import { elapsedRollMs, landingGlowStrength, landingGlowMs } from '../d20/timing';
+import { landingGlowStrength, landingGlowMs } from '../d20/timing';
 
-type Props = { result: number; theme: D20Theme; durationMs: number; rolledAt: string; onLanded: (at:number) => void; space?: 'tray' | 'board'; resultVisible?:boolean; landingAt?:number|null };
+type Props = { result: number; theme: D20Theme; durationMs: number; rolledAt: string; elapsedMs:()=>number; onLanded: (at:number) => void; space?: 'tray' | 'board'; resultVisible?:boolean; landingAt?:number|null };
 const boardCameraOptions={position:[0,20,5] as [number,number,number],left:-10,right:10,top:6,bottom:-6};
 const trayCameraOptions={position:[0,12,3.72] as [number,number,number],fov:38};
 function numberTexture(value: number, color: string, glow = false) {
@@ -40,7 +40,7 @@ const numberedFaces = dieTopology.faces.map((face, index) => {
   return { center: center.addScaledVector(normal,.007), normal, quaternion: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(right,up,normal)) };
 });
 
-function Die({ result, theme, durationMs, rolledAt, onLanded, space = 'tray', landingAt = null }: Props) {
+function Die({ result, theme, durationMs, rolledAt, elapsedMs, onLanded, space = 'tray', landingAt = null }: Props) {
   const group = useRef<THREE.Group>(null), glow = useRef<THREE.Mesh<THREE.PlaneGeometry,THREE.MeshBasicMaterial>>(null);
   const shadow = useRef<THREE.Mesh<THREE.PlaneGeometry,THREE.MeshBasicMaterial>>(null);
   const reported = useRef(false), callback = useRef(onLanded); callback.current = onLanded;
@@ -71,7 +71,7 @@ function Die({ result, theme, durationMs, rolledAt, onLanded, space = 'tray', la
   }, [camera, boardFrame, invalidate, setDpr, size.width, size.height]);
   useFrame(() => {
     if (!group.current) return;
-    const elapsed = elapsedRollMs(rolledAt,durationMs), progress = durationMs > 0 ? Math.min(1,elapsed/durationMs) : 1;
+    const elapsed = elapsedMs(), progress = durationMs > 0 ? Math.min(1,elapsed/durationMs) : 1;
     const sample = sampleD20Roll(roll,progress);
     if (boardFrame) {
       // Canvas configuration can reapply its DPR prop on a parent render.
@@ -120,11 +120,11 @@ function Die({ result, theme, durationMs, rolledAt, onLanded, space = 'tray', la
     </mesh>
   </group></>;
 }
-function Fallback({result,resultVisible,durationMs,rolledAt,onLanded}:Props) {
+function Fallback({result,resultVisible,durationMs,elapsedMs,onLanded}:Props) {
   useEffect(() => {
-    const timer=setTimeout(()=>onLanded(Date.now()),Math.max(0,durationMs-elapsedRollMs(rolledAt,durationMs)));
+    const timer=setTimeout(()=>onLanded(Date.now()),Math.max(0,durationMs-elapsedMs()));
     return()=>clearTimeout(timer);
-  }, [durationMs,rolledAt,onLanded]);
+  }, [durationMs,elapsedMs,onLanded]);
   return <div className="d20-webgl-fallback" role="img" aria-label={resultVisible?`D20 result ${result}`:'Rolling D20'}>{resultVisible?result:'D20'}</div>;
 }
 class RendererBoundary extends Component<Props&{children:ReactNode},{failed:boolean}> {

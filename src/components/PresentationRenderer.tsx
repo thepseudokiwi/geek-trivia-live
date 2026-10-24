@@ -4,7 +4,7 @@ function hostWindowStyle(url:string):CSSProperties {const frame=readHostFraming(
 import { themeCssVariables, type ThemeConfig, type ThemePosition } from '../../shared/themeDesigner';
 import type { PresentationLayout, PresentationScene, PublicLiveState, PublicPresentationState } from '../../shared/types';
 import { D20Presentation } from './D20Presentation';
-import { elapsedRollMs } from '../d20/timing';
+import { createRollClock } from '../d20/timing';
 import { CategoryIcon } from './CategoryIcon';
 import { glassVariables } from '../../shared/themeGlass';
 import '../glass.css';
@@ -27,7 +27,7 @@ export function PresentationRenderer({state,presentation=pState(state),scene=pre
   <header className="program-brand"><div>{!p.profile.logoUrl&&<h1>{p.profile.showTitle}</h1>}</div><span className="audience-connection">{preview?'PREVIEW':connected?'LIVE':'Reconnecting…'}</span></header>
   {p.profile.logoUrl&&<img className="program-theme-logo" style={pos('logo')} src={p.profile.logoUrl} alt={`${p.profile.name} logo`}/>}
   <main className="program-stage" key={`${scene}-${p.transition.startedAt??''}`}>
-   {displayD20?<div className={`d20-tray-board ${state.d20!.result===20?'natural20-sequence':''}`} style={{'--selection-delay':`${state.d20!.animationDurationMs-elapsedRollMs(state.d20!.rolledAt,state.d20!.animationDurationMs)}ms`} as CSSProperties}><div className="board-position" style={positionStyle(selectedPosition(config,'board',layout,'board'))}><Board state={state} usedText={config?.board.usedText}/>{state.d20!.result===20&&state.d20!.selectedSquare&&<Board state={state} usedText={config?.board.usedText} className="natural20-highlight-board" highlight={state.d20!.selectedSquare}/>}</div></div>:<>
+   {displayD20?<div className={`d20-tray-board ${state.d20!.result===20?'natural20-sequence':''}`} style={{'--selection-delay':`${state.d20!.animationDurationMs-createRollClock(state.d20!.rolledAt,state.d20!.animationDurationMs,state.d20!.serverNow)()}ms`} as CSSProperties}><div className="board-position" style={positionStyle(selectedPosition(config,'board',layout,'board'))}><Board state={state} usedText={config?.board.usedText}/>{state.d20!.result===20&&state.d20!.selectedSquare&&<Board state={state} usedText={config?.board.usedText} className="natural20-highlight-board" highlight={state.d20!.selectedSquare}/>}</div></div>:<>
     {scene==='standby'&&<section className="hero-scene"><p className="eyebrow">{p.profile.subtitle}</p><h2>Stand by</h2><p>The show begins soon</p></section>}
     {scene==='intro'&&<section className="hero-scene intro-scene"><p className="eyebrow">Live game show</p>{!p.profile.logoUrl&&<h2>{p.profile.showTitle}</h2>}<p>{state.title}</p></section>}
     {scene==='board'&&<div className="board-position" style={pos('board')}><Board state={state} usedText={config?.board.usedText}/></div>}

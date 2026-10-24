@@ -8,11 +8,13 @@ const episode=process.env.D20_CHECK_EPISODE||'DEMO-EP-RUN';
 const state=await fetch(`${base}/api/live/${episode}/public`).then(r=>{assert(r.ok,'Public preview state must load');return r.json()});
 const browser=await chromium.launch({headless:true,channel:'msedge'});
 try {
-  const page=await browser.newPage({viewport:{width:2560,height:1271},deviceScaleFactor:1.5});
+  const page=await browser.newPage({viewport:{width:2560,height:1271},deviceScaleFactor:1.5,timezoneId:'America/Los_Angeles',
+    ...(process.env.D20_RECORD_VIDEO==='1'?{recordVideo:{dir:'.local/d20-viewport-check',size:{width:1280,height:720}}}:{})});
   const errors=[];
   page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(vertices=>{
     window.__dieFrames=[];
+    const wallNow=Date.now.bind(Date);window.__clockSkew=0;Date.now=()=>wallNow()+window.__clockSkew;
     const proto=WebGL2RenderingContext.prototype;
     const locations=new WeakMap(), matrices=new WeakMap();
     const getLocation=proto.getUniformLocation;
@@ -49,11 +51,17 @@ try {
   await page.locator('.board-position').waitFor();
   for(let attempt=0;attempt<4;attempt++){
     state.presentation.programScene='d20';
-    state.d20={result:10+attempt,mode:'question_selector',status:'rolling',effectName:'Question Selected',publicDescription:'Viewport check',selectedSquare:{category:state.board[0].name,value:100},effectiveAwardXp:100,timerOverrideMs:null,stealEnabled:false,rolledAt:new Date().toISOString(),animationDurationMs:3500,resultDisplayDurationMs:5000,autoReturn:false,theme:'holographic_scifi',soundEnabled:false,volume:0};
-    await page.evaluate(()=>{window.__dieFrames=[]});
+    const serverNow=new Date().toISOString(),skew=[0,-120000,120000,0][attempt];
+    state.d20={result:10+attempt,mode:'question_selector',status:'rolling',effectName:'Question Selected',publicDescription:'Viewport check',selectedSquare:{category:state.board[0].name,value:100},effectiveAwardXp:100,timerOverrideMs:null,stealEnabled:false,rolledAt:serverNow.slice(0,19).replace('T',' '),serverNow,animationDurationMs:3500,resultDisplayDurationMs:5000,autoReturn:false,theme:'holographic_scifi',soundEnabled:false,volume:0};
+    await page.evaluate(skew=>{window.__dieFrames=[];window.__clockSkew=skew},skew);
     socket.send(JSON.stringify({event:'state.public',data:state}));
     await page.locator('.d20-board-roll.rolling canvas').waitFor();
     await page.waitForTimeout(1200);
+    const earlyTravel=await page.evaluate(()=>{
+      const xs=window.__dieFrames.filter(f=>f.canvas.width>0).map(f=>(f.minX+f.maxX)/2);
+      return Math.max(...xs)-Math.min(...xs);
+    });
+    assert(earlyTravel>.15,`The die must actually move in Pacific time, not freeze at its first pose (travel=${earlyTravel})`);
     await page.screenshot({path:`.local/d20-viewport-check/moving-${attempt}.jpg`});
     if(attempt===1)await page.setViewportSize({width:1920,height:540});
     if(attempt===2)await page.setViewportSize({width:1280,height:960});
@@ -62,11 +70,14 @@ try {
     const active=frames.filter(f=>f.canvas.width>0);
     const clipped=active.filter(f=>Math.max(-f.minX,f.maxX,-f.minY,f.maxY)>.96);
     const gaps=frames.slice(1).map((f,i)=>f.at-frames[i].at).sort((a,b)=>a-b);
-    console.log(JSON.stringify({attempt,frames:active.length,clipped:clipped.length,firstClipped:clipped[0],frameTime95:gaps[Math.floor(gaps.length*.95)],maxPixels:Math.max(...active.map(f=>f.pixels)),cameraResets:active.filter(f=>Math.abs(f.projection[0]-.1)>.00001).length}));
+    console.log(JSON.stringify({attempt,timezone:'America/Los_Angeles',clockSkewMs:skew,earlyTravel,frames:active.length,clipped:clipped.length,firstClipped:clipped[0],frameTime95:gaps[Math.floor(gaps.length*.95)],maxPixels:Math.max(...active.map(f=>f.pixels)),cameraResets:active.filter(f=>Math.abs(f.projection[0]-.1)>.00001).length}));
     assert(frames.length>10,'Must observe actual rendered mesh matrices');
     assert.equal(clipped.length,0,'Every rendered die face must stay in the real camera');
     assert(active.every(f=>Math.abs(f.projection[0]-.1)<.00001),'World-space camera must never reset to a pixel-space frustum');
     assert(active.every(f=>f.pixels<=1_810_000),'High-DPI dice layer must stay within its rendering budget');
   }
   assert.deepEqual(errors,[]);
+  if(page.video()){
+    const recording=page.video();await page.close();console.log(JSON.stringify({recording:await recording.path()}));
+  }
 }finally{await browser.close()}

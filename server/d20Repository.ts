@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { parseUtcTimestamp, utcTimestampIso } from '../shared/timestamps.js';
 import type {
   D20Effect,
   D20Settings,
@@ -419,7 +420,8 @@ function project(
     effectiveAwardXp: row.effective_award_xp,
     timerOverrideMs: row.timer_override_ms,
     stealEnabled: Boolean(row.steal_enabled),
-    rolledAt: row.created_at,
+    rolledAt: utcTimestampIso(row.created_at),
+    serverNow: now(),
     animationDurationMs: settings.animationDurationMs,
     resultDisplayDurationMs: settings.resultDisplayDurationMs,
     autoReturn: settings.autoReturn,
@@ -645,7 +647,7 @@ export function executeD20Command(
       if(mode === "question_selector" && result === 1)values.deduction=q.difficulty*100;
       rollId = crypto.randomUUID();
       db.prepare(
-        `INSERT INTO d20_rolls(id,episode_id,command_id,mode,result,effect_key,selected_question_id,category_name,question_value,status,config_revision,config_snapshot_json,prior_state_json,effective_award_xp,effective_deduction_xp,timer_override_ms,steal_enabled,rerolls_roll_id) VALUES(?,?,?,?,?,?,?,?,?,'rolling',?,?,?,?,?,?,?,?)`,
+        `INSERT INTO d20_rolls(id,episode_id,command_id,mode,result,effect_key,selected_question_id,category_name,question_value,status,config_revision,config_snapshot_json,prior_state_json,effective_award_xp,effective_deduction_xp,timer_override_ms,steal_enabled,rerolls_roll_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,'rolling',?,?,?,?,?,?,?,?,?)`,
       ).run(
         rollId,
         input.episodeId,
@@ -664,6 +666,7 @@ export function executeD20Command(
         values.timer,
         values.steal ? 1 : 0,
         p.rerollsRollId ?? null,
+        now(),
       );
       db.prepare("UPDATE episodes SET active_d20_roll_id=? WHERE id=?").run(
         rollId,
@@ -802,7 +805,7 @@ export function revealD20SelectedQuestion(episodeId:string,rollId:string){
 export function scheduleD20QuestionReveal(episodeId:string,rollId:string,onReveal:()=>void){
   const row:any=rollRow(rollId);
   if(!row||row.mode!=="question_selector")return;
-  const config=JSON.parse(row.config_snapshot_json||"{}"),elapsed=Math.max(0,Date.now()-Date.parse(row.created_at)),delay=Math.max(0,Number(config.animationDurationMs??0)+5000-elapsed);
+  const config=JSON.parse(row.config_snapshot_json||"{}"),elapsed=Math.max(0,Date.now()-parseUtcTimestamp(row.created_at)),delay=Math.max(0,Number(config.animationDurationMs??0)+5000-elapsed);
   const timer=setTimeout(()=>{try{if(revealD20SelectedQuestion(episodeId,rollId))onReveal()}catch(error){console.error("Unable to reveal D20-selected question",error)}},delay);
   timer.unref();
 }

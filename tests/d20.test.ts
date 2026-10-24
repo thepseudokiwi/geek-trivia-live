@@ -147,6 +147,14 @@ describe("selector fairness and authority", () => {
     expect(result.result).toBe(mapping.d20_value);
     const publicState = live.getPublicLiveState(id);
     expect(publicState.d20?.result).toBe(mapping.d20_value);
+    expect(publicState.d20?.rolledAt).toMatch(/T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(publicState.d20?.serverNow).toMatch(/Z$/);
+    expect(Date.parse(publicState.d20!.serverNow!)-Date.parse(publicState.d20!.rolledAt)).toBeLessThan(2000);
+    const persistedTime=db.prepare('SELECT created_at FROM d20_rolls WHERE id=?').get(result.rollId)as {created_at:string};
+    expect(persistedTime.created_at).toBe(publicState.d20!.rolledAt);
+    db.prepare('UPDATE d20_rolls SET created_at=? WHERE id=?').run('2026-10-24 05:25:30',result.rollId);
+    expect(d20.getPublicD20(id)?.rolledAt).toBe('2026-10-24T05:25:30.000Z');
+    db.prepare('UPDATE d20_rolls SET created_at=? WHERE id=?').run(persistedTime.created_at,result.rollId);
     expect(JSON.stringify(publicState.d20)).not.toContain("D20-C2-D3");
     expect(JSON.stringify(publicState)).not.toContain(
       "Hidden D20 question 2/3",
