@@ -4,7 +4,8 @@ import { prepareD20Roll, sampleD20Roll } from '../src/d20/physics.js';
 import { dieTopology } from '../src/d20/topology.js';
 import { roundedD20 } from '../src/d20/geometry.js';
 import { boardPixelRatio, boardRollFrame } from '../src/d20/boardCamera.js';
-import { elapsedRollMs, landingGlowStrength } from '../src/d20/timing.js';
+import { createRollClock, elapsedRollMs, landingGlowStrength } from '../src/d20/timing.js';
+import { parseUtcTimestamp, utcTimestampIso } from '../shared/timestamps.js';
 import { d20Palettes, d20Palette, d20ThemeIds } from '../shared/d20Themes.js';
 import { defaultThemeConfig, themeConfigSchema } from '../shared/themeDesigner.js';
 
@@ -123,5 +124,25 @@ describe('ported D20 presentation', () => {
     expect(elapsedRollMs('preview-roll',0,start)).toBeGreaterThan(1500-1);
     expect(landingGlowStrength(-1)).toBe(0);expect(landingGlowStrength(300)).toBe(1);
     expect(landingGlowStrength(900)).toBeGreaterThan(0);expect(landingGlowStrength(1500)).toBe(0);
+  });
+  it('interprets legacy SQLite roll timestamps as UTC, not the browser timezone',()=>{
+    const timestamp=Date.parse('2026-10-24T05:25:30Z');
+    expect(parseUtcTimestamp('2026-10-24 05:25:30')).toBe(timestamp);
+    expect(parseUtcTimestamp('2026-10-24T05:25:30')).toBe(timestamp);
+    expect(parseUtcTimestamp('2026-10-23T22:25:30-07:00')).toBe(timestamp);
+    expect(utcTimestampIso('2026-10-24 05:25:30')).toBe('2026-10-24T05:25:30.000Z');
+    expect(elapsedRollMs('2026-10-24 05:25:30',2200,timestamp+1100)).toBe(1100);
+  });
+  it('advances from server time using a monotonic clock despite local clock skew',()=>{
+    let monotonic=50;
+    const start=Date.parse('2026-10-24T05:25:30Z');
+    for(const skew of [-7*3600000,-120000,120000,7*3600000]){
+      const clock=createRollClock('2026-10-24 05:25:30',2200,'2026-10-24T05:25:30.100Z',()=>monotonic,start+skew);
+      expect(clock()).toBe(100);
+      monotonic+=1100;expect(clock()).toBe(1200);
+      monotonic+=1100;expect(clock()).toBe(2300);
+    }
+    const stale=createRollClock('2026-10-24 05:25:30',2200,'2026-10-24T05:25:40Z',()=>monotonic,start-120000);
+    expect(stale()).toBe(10000);
   });
 });
