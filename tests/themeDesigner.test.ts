@@ -70,6 +70,19 @@ describe('Theme Designer drafts and publishing',()=>{
     expect(restored.draft.global.radius).not.toBe(77);
     expect(restored.published.global.radius).toBe(77);
   });
+  it('saves, publishes and exports the timer font without changing question typography',()=>{
+    const copy=themes.duplicateTheme('nerd-wars-classic','Timer Font Test');
+    const draft=structuredClone(copy.draft),questionFont=draft.typography.question.fontFamily;
+    draft.typography.timer.fontFamily='Georgia, serif';
+    themes.saveThemeDraft(copy.id,draft);
+    expect(themes.getDesignerTheme(copy.id).draft.typography.timer.fontFamily).toBe('Georgia, serif');
+    expect(themes.getDesignerTheme(copy.id).published.typography.timer.fontFamily).toBe(copy.published.typography.timer.fontFamily);
+    const published=themes.publishTheme(copy.id,{changeSummary:'Timer text font'});
+    const tokens=themes.themeTokensFromConfig(copy.id,published.published);
+    expect(themeCssVariables(tokens.designer!)['--font-timer']).toBe('Georgia, serif');
+    expect(tokens.designer!.typography.question.fontFamily).toBe(questionFont);
+    expect(themes.importTheme(themes.exportTheme(copy.id)).draft.typography.timer.fontFamily).toBe('Georgia, serif');
+  });
 
   it('exports, inspects, and imports compatible JSON',()=>{
     const exported=themes.exportTheme('nerd-wars-classic');
