@@ -67,6 +67,7 @@ try {
   const before = await page.locator('.board-position').boundingBox();
   const sendRoll = (result, age = 0, duration = 1600) => {
     state.presentation.programScene = 'd20';
+    state.board[0].squares[0].active = true;
     state.d20 = {
       result, mode: 'question_selector', status: 'rolling',
       effectName: 'Question Selected', publicDescription: 'The die has chosen the next square.',
@@ -85,6 +86,8 @@ try {
   sendRoll(12);
   await page.locator('.d20-board-roll.rolling').waitFor();
   assert.equal(await page.locator('.d20-corner-number').textContent(), 'ROLLING');
+  const activeSquare=page.locator('.board-position>.audience-board:not(.natural20-highlight-board) .audience-square.active');
+  assert.equal(await activeSquare.evaluate(element=>getComputedStyle(element).outlineStyle),'none','Do not reveal the chosen XP block during the roll');
   const canvas = await page.locator('.d20-board-roll .d20-three').boundingBox();
   await page.screenshot({ path: '.local/d20-board-check/rolling-layout.jpg' });
   assert(canvas.width > 1800 && canvas.height > 700, `The die must roll over the board, not inside the corner: ${JSON.stringify(canvas)}`);
@@ -93,6 +96,7 @@ try {
   assert.equal(await page.locator('.d20-board-roll .d20-three').evaluate(element=>getComputedStyle(element).filter),'none','Do not paint a second CSS shadow around the moving die');
   await page.locator('.d20-board-roll.revealed').waitFor();
   assert.equal(await page.locator('.d20-corner-number').textContent(), '12');
+  assert.equal(await activeSquare.evaluate(element=>getComputedStyle(element).outlineStyle),'solid','Reveal the chosen XP block together with the result');
   const phases=await page.evaluate(()=>window.__d20Phases.slice(-3));
   assert.deepEqual(phases.map(event=>event.phase),['rolling','landed','revealed']);
   assert.equal(phases[1].value,'LANDED');assert.equal(phases[1].details,0);

@@ -56,6 +56,7 @@
 .d20-critical-award{padding:.25em .9em;border-radius:999px;background:#fde047;color:#241139;font:900 clamp(.9rem,1.7vw,1.8rem) var(--font-heading)}
 .d20-board-roll.natural-20.landed>.d20-three{animation:none;filter:none}
 .presentation:has(>.d20-board-roll:not(.revealed)) .natural20-highlight-board{visibility:hidden}
+.presentation:has(>.d20-board-roll:not(.revealed)) .audience-square.active{outline:none;transform:none}
 @keyframes n20-popup-arrive{from{opacity:0;transform:translate(-50%,1.5rem) scale(.65)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
 .d20-reduced-motion .natural20-energy,.d20-reduced-motion .natural20-energy *,.d20-reduced-motion>.d20-critical-popup,.d20-reduced-motion .d20-corner-number{animation:none!important}
 .d20-reduced-motion .natural20-energy b,.d20-reduced-motion .energy-ring{display:none}
