@@ -83,6 +83,15 @@ describe('ported D20 presentation', () => {
       expect(sampleD20Roll(roll,1/132).position.distanceTo(roll.samples[0].position)).toBeLessThan(maxStep*.1);
     }
   });
+  it('uses a lower felt-surface launch and settles onto the nearest physical face',()=>{
+    for(let result=1;result<=20;result++){
+      const roll=prepareD20Roll(result,`felt-settle-${result}`,'board'),first=roll.samples[0],last=roll.samples.at(-1)!;
+      expect(first.position.y).toBeGreaterThanOrEqual(1.7);expect(first.position.y).toBeLessThanOrEqual(2.3);
+      expect(last.position.y).toBeCloseTo(dieTopology.inradius,5);
+      expect(dieTopology.normals[roll.topFace].clone().applyQuaternion(last.rotation).y).toBeGreaterThan(.9999);
+      expect(last.rotation.angleTo(roll.samples.at(-2)!.rotation)).toBeLessThan(.01);
+    }
+  });
   it('keeps every rotating face inside the camera in standard and wide/short board windows', () => {
     for(let result=1;result<=20;result++) {
       const roll=prepareD20Roll(result,`camera-clearance-${result}`,'board');
