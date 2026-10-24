@@ -45,4 +45,41 @@ describe('D20 landing flourish',()=>{
     await vi.advanceTimersByTimeAsync(2000);
     expect(context.close).toHaveBeenCalledTimes(1);
   });
+  it('uses low-passed, softly correlated rolling noise instead of sharp tabletop clacks',()=>{
+    vi.useFakeTimers();
+    const parameter=()=>({value:0,events:[]as number[][],setValueAtTime(value:number,at:number){this.events.push([value,at])},linearRampToValueAtTime(value:number,at:number){this.events.push([value,at])},exponentialRampToValueAtTime(value:number,at:number){this.events.push([value,at])},cancelScheduledValues(){}});
+    const node=()=>({gain:parameter(),frequency:parameter(),Q:parameter(),type:'',connect(other:any){return other},start(){},stop(){}});
+    let filter:ReturnType<typeof node>,samples:Float32Array;
+    class Audio{
+      currentTime=0;sampleRate=4800;destination={};resume=async()=>{};close=async()=>{};
+      createGain=node;createBufferSource=node;
+      createBiquadFilter(){return filter=node()}
+      createBuffer(_:number,length:number){samples=new Float32Array(length);return{getChannelData:()=>samples}}
+    }
+    vi.stubGlobal('window',{AudioContext:Audio,setTimeout,clearTimeout});
+    const sound=dieRollSound(1000,12,.7)!;
+    expect(filter!.type).toBe('lowpass');
+    expect(filter!.frequency.events.map(event=>event[0])).toEqual([950,420]);
+    let amplitude=0,change=0;
+    for(let i=1;i<samples!.length;i++){amplitude+=Math.abs(samples![i]);change+=Math.abs(samples![i]-samples![i-1])}
+    expect(amplitude).toBeGreaterThan(0);expect(change).toBeLessThan(amplitude);
+    sound.stop();
+  });
+  it('does not play a late flourish after autoplay blocks the landing cue',async()=>{
+    vi.useFakeTimers();
+    let context:any,resumeLanding:()=>void=()=>{};const starts=vi.fn();
+    const parameter=()=>({value:0,setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){},cancelScheduledValues(){}});
+    const node=()=>({gain:parameter(),frequency:parameter(),Q:parameter(),connect(other:any){return other},start:starts,stop(){}});
+    class Audio{
+      currentTime=0;sampleRate=100;destination={};close=vi.fn(async()=>{});resume=()=>Promise.resolve();
+      constructor(){context=this}createGain=node;createBufferSource=node;createBiquadFilter=node;createOscillator=node;
+      createBuffer(_:number,length:number){return{getChannelData:()=>new Float32Array(length)}}
+    }
+    vi.stubGlobal('window',{AudioContext:Audio,setTimeout,clearTimeout});
+    const sound=dieRollSound(1000,12,.7)!;starts.mockClear();
+    context.resume=()=>new Promise<void>(resolve=>{resumeLanding=resolve});sound.land();
+    await vi.advanceTimersByTimeAsync(600);resumeLanding();await Promise.resolve();
+    expect(starts).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(900);expect(context.close).toHaveBeenCalledTimes(1);
+  });
 });

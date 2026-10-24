@@ -1,4 +1,5 @@
 .board-position{position:absolute}
+.game-audio-unlock{position:fixed;left:2%;bottom:2%;z-index:150;border:1px solid #fde047;border-radius:.65rem;padding:.65rem 1rem;background:#151126f2;color:#fff7d6;font:700 1rem system-ui,sans-serif;box-shadow:0 .3rem 1rem #0008;cursor:pointer}
 .board-position>.audience-board{height:100%}
 .d20-board-sequence{position:absolute;inset:0;overflow:hidden;background:var(--background,#07111f);isolation:isolate}
 .d20-board-backdrop{position:absolute!important;left:var(--title-safe);right:var(--title-safe);top:11%;bottom:11%;width:auto!important;height:auto!important;z-index:1;transition:opacity .45s ease,filter .45s ease,transform .45s ease}
