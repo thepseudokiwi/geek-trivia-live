@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { prepareD20Roll, sampleD20Roll } from '../src/d20/physics.js';
 import { dieTopology } from '../src/d20/topology.js';
 import { roundedD20 } from '../src/d20/geometry.js';
-import { boardRollFrame } from '../src/d20/boardCamera.js';
+import { boardPixelRatio, boardRollFrame } from '../src/d20/boardCamera.js';
 import { elapsedRollMs, landingGlowStrength } from '../src/d20/timing.js';
 import { d20Palettes, d20Palette, d20ThemeIds } from '../shared/d20Themes.js';
 import { defaultThemeConfig, themeConfigSchema } from '../shared/themeDesigner.js';
@@ -83,22 +83,31 @@ describe('ported D20 presentation', () => {
     }
   });
   it('keeps every rotating face inside the camera in standard and wide/short board windows', () => {
-    for(let result=1;result<=5;result++) {
+    for(let result=1;result<=20;result++) {
       const roll=prepareD20Roll(result,`camera-clearance-${result}`,'board');
-      for(const aspect of [1,1.75,2.22,3.2,4.5]) {
+      for(const aspect of [1,1.75,2.22,3.2,4.5,6]) {
         const frame=boardRollFrame(roll,aspect);
         const camera=new THREE.OrthographicCamera(-frame.halfWidth,frame.halfWidth,frame.halfHeight,-frame.halfHeight,.1,100);
         camera.position.set(0,20,5);camera.lookAt(0,0,0);camera.updateMatrixWorld();
         let maxX=0,maxY=0;
         for(const sample of roll.samples) for(const vertex of dieTopology.vertices) {
           const point=vertex.clone().applyQuaternion(sample.rotation).multiplyScalar(frame.dieScale)
-            .add(new THREE.Vector3(sample.position.x,sample.position.y*frame.dieScale,sample.position.z*frame.depthScale)).project(camera);
+            .add(new THREE.Vector3(sample.position.x*frame.widthScale,sample.position.y*frame.dieScale,sample.position.z*frame.depthScale)).project(camera);
           maxX=Math.max(maxX,Math.abs(point.x));maxY=Math.max(maxY,Math.abs(point.y));
         }
-        expect(maxX).toBeLessThan(1);
-        expect(maxY).toBeLessThan(1);
+        expect(maxX).toBeLessThan(.96);
+        expect(maxY).toBeLessThan(.96);
       }
     }
+  });
+  it('bounds board canvas fill rate on high-DPI production screens without upscaling low-DPI screens',()=>{
+    for(const [width,height,dpr] of [[2458,979,1.5],[3686,1663,2],[1229,739,1],[640,480,1.25]]){
+      const ratio=boardPixelRatio(width,height,dpr);
+      expect(width*height*ratio*ratio).toBeLessThanOrEqual(1_800_001);
+      expect(ratio).toBeLessThanOrEqual(dpr);
+      expect(ratio).toBeLessThanOrEqual(1.25);
+    }
+    expect(boardPixelRatio(0,0,NaN)).toBe(1);
   });
   it('keeps ten demo colors, legacy themes, and export/import validation compatible', () => {
     expect(d20ThemeIds).toHaveLength(13);
