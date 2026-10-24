@@ -35,10 +35,10 @@
 
 /* Reserve a clean production band above the category headers. */
 .presentation:is(.scene-board,.scene-d20) .board-position{top:17%!important;left:9%!important;width:82%!important;height:72%!important}
-.presentation:is(.scene-board,.scene-d20):has(>.d20-corner-tray) .board-position{top:17%!important;left:21%!important;width:58%!important;height:72%!important}
+.presentation:is(.scene-board,.scene-d20):has(.d20-corner-tray) .board-position{top:17%!important;left:21%!important;width:58%!important;height:72%!important}
 .presentation:is(.scene-board,.scene-d20) .audience-board{height:100%;gap:clamp(.45rem,.8vw,.8rem)}
 .presentation:is(.scene-board,.scene-d20) .audience-board article{grid-template-rows:minmax(2rem,.54fr) repeat(5,1fr);gap:clamp(.35rem,.6vw,.65rem)}
 .presentation:is(.scene-board,.scene-d20) .audience-board h2{padding:.35rem;font-size:clamp(.85rem,1.45vw,1.6rem)}
 .presentation:is(.scene-board,.scene-d20) .audience-square{font-size:clamp(1.2rem,2.55vw,2.85rem)}
 .presentation .d20-board-backdrop{top:15%!important;left:6%!important;right:6%!important;bottom:7%!important}
-@media(max-width:900px){.presentation:is(.scene-board,.scene-d20):has(>.d20-corner-tray) .board-position{left:14%!important;width:62%!important}.presentation:is(.scene-board,.scene-d20):has(>.d20-corner-tray) .audience-board h2{font-size:clamp(.7rem,1.35vw,1rem)}.presentation:is(.scene-board,.scene-d20):has(>.d20-corner-tray) .audience-square{font-size:clamp(1rem,2.3vw,2rem)}}
+@media(max-width:900px){.presentation:is(.scene-board,.scene-d20):has(.d20-corner-tray) .board-position{left:14%!important;width:62%!important}.presentation:is(.scene-board,.scene-d20):has(.d20-corner-tray) .audience-board h2{font-size:clamp(.7rem,1.35vw,1rem)}.presentation:is(.scene-board,.scene-d20):has(.d20-corner-tray) .audience-square{font-size:clamp(1rem,2.3vw,2rem)}}
