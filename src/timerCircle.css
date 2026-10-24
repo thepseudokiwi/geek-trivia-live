@@ -11,15 +11,28 @@
   text-align:center!important;
   font-variant-numeric:tabular-nums;
   border-radius:50%!important;
+  container-type:inline-size;
+}
+.presentation .broadcast-timer-value{
+  display:block;
+  font-size:min(1em,65cqi);
+  line-height:1;
+  transform:translateY(-4px);
 }
 .presentation .broadcast-timer.expired{
   background:#b91c1c!important;
   border-color:#fecaca!important;
   color:#fff!important;
   box-shadow:0 0 2rem #ef444499!important;
-  font-size:clamp(1rem,1.8vw,2rem)!important;
   font-weight:1000!important;
-  letter-spacing:.04em;
-  white-space:nowrap;
+  letter-spacing:0;
+}
+.presentation .broadcast-timer.expired .broadcast-timer-value{
+  max-width:82%;
+  font-size:clamp(.375rem,12cqi,1.25rem);
+  line-height:1.1;
+  white-space:normal;
+  text-wrap:balance;
+  transform:translateY(-1px);
 }
 .presentation .broadcast-timer.expired::after{content:none!important}
