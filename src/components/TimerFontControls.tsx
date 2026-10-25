@@ -1,4 +1,5 @@
 import type {ThemeConfig} from '../../shared/themeDesigner';
+import {useEffect,useState} from 'react';
 
 type FontAsset={id:string;active?:boolean;asset_type?:string;display_name?:string;displayName?:string};
 type Props={
@@ -12,6 +13,7 @@ type Props={
   onStyleChange:(style:ThemeConfig['timer']['style'])=>void;
   onSizeChange:(size:number)=>void;
   onFontSizeChange:(size:number)=>void;
+  onTextPositionChange:(x:number,y:number)=>void;
 };
 const systemFonts=[
   ['system-ui, sans-serif','System UI'],['Arial, sans-serif','Arial'],
@@ -19,7 +21,22 @@ const systemFonts=[
   ['"Courier New", monospace','Courier New'],['Impact, sans-serif','Impact'],
 ]as const;
 
-export function TimerFontControls({value,assets,googleFonts,onChange,onPreview,timer,fontSize,onStyleChange,onSizeChange,onFontSizeChange}:Props){
+function TextOffsetControl({label,name,value,onChange}:{label:string;name:string;value:number;onChange:(value:number)=>void}){
+  const [entry,setEntry]=useState(String(value));
+  useEffect(()=>setEntry(String(value)),[value]);
+  const edit=(text:string)=>{
+    setEntry(text);
+    if(!text.trim()||!Number.isFinite(Number(text)))return;
+    const number=Number(text),bounded=Math.max(-60,Math.min(60,number));
+    onChange(bounded);if(bounded!==number)setEntry(String(bounded));
+  };
+  return <label>{label}
+    <input aria-label={`${name} slider`} type="range" min={-60} max={60} step={.5} value={value} onChange={event=>onChange(Number(event.target.value))}/>
+    <input aria-label={name} type="text" inputMode="decimal" value={entry} onChange={event=>edit(event.target.value)} onBlur={()=>setEntry(String(value))} onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}}/>
+  </label>;
+}
+
+export function TimerFontControls({value,assets,googleFonts,onChange,onPreview,timer,fontSize,onStyleChange,onSizeChange,onFontSizeChange,onTextPositionChange}:Props){
   const installed=assets.filter(asset=>asset.active&&asset.asset_type==='font'&&(asset.display_name||asset.displayName));
   const installedFamilies=new Set(installed.map(asset=>asset.display_name??asset.displayName));
   const known=systemFonts.some(([family])=>family===value)||installedFamilies.has(value);
@@ -37,6 +54,13 @@ export function TimerFontControls({value,assets,googleFonts,onChange,onPreview,t
       <input aria-label="Timer text size" type="number" min={10} max={240} value={fontSize} onChange={event=>onFontSizeChange(Math.max(10,Math.min(240,Number(event.target.value))))}/>
     </label>
     <p>Timer size scales the frame; Text size changes the numbers. The frame grows automatically if needed to keep larger text readable.</p>
+    <fieldset className="timer-text-position">
+      <legend>Text position</legend>
+      <TextOffsetControl label="Horizontal offset" name="Timer text horizontal offset" value={timer.textOffsetX??0} onChange={x=>onTextPositionChange(x,timer.textOffsetY??0)}/>
+      <TextOffsetControl label="Vertical offset" name="Timer text vertical offset" value={timer.textOffsetY??0} onChange={y=>onTextPositionChange(timer.textOffsetX??0,y)}/>
+      <button type="button" onClick={()=>onTextPositionChange(0,0)}>Reset text position</button>
+      <p>Moves text only, not the timer frame. Positive values move right/down. Units are pixels at 1080p and scale with the screen.</p>
+    </fieldset>
     <label>Font family
       <select aria-label="Timer font family" value={value} onChange={event=>onChange(event.target.value)}>
         {!known&&<option value={value}>{value}</option>}

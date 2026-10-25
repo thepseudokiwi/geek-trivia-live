@@ -1,5 +1,6 @@
 .presentation .broadcast-timer{
   --timer-unit:.052083333vw;
+  --timer-text-baseline:-4px;
   display:grid;
   place-items:center;
   align-content:center;
@@ -23,7 +24,7 @@
   justify-self:center;
   font-size:1em;
   line-height:1;
-  transform:translateY(-4px);
+  transform:translate(calc(var(--timer-text-offset-x,0) * var(--timer-unit) * var(--content-scale,1)),calc(var(--timer-text-baseline) + var(--timer-text-offset-y,0) * var(--timer-unit) * var(--content-scale,1)));
 }
 .presentation .timer-style-circular{border-radius:50%}
 .presentation .timer-style-minimal{border:0;background:transparent;box-shadow:none}
@@ -32,12 +33,13 @@
 .timer-progress-track{position:absolute;inset:0;z-index:0;background:#0005;overflow:hidden;border-radius:inherit}
 .timer-progress-track i{position:absolute;left:0;bottom:0;height:100%;background:color-mix(in srgb,var(--accent) 42%,var(--surface));transition:width .2s linear,height .2s linear}
 .timer-style-vertical-bar .timer-progress-track i{width:100%}
-.presentation .timer-style-horizontal-bar .broadcast-timer-value{transform:translateY(-1px)}
+.presentation .timer-style-horizontal-bar{--timer-text-baseline:-1px}
 .presentation .timer-style-segmented{border-radius:.35rem;background:var(--surface);overflow:hidden}
-.presentation .timer-style-segmented .broadcast-timer-value{transform:translateY(-8px)}
+.presentation .timer-style-segmented{--timer-text-baseline:-8px}
 .timer-segments{position:absolute;left:5%;right:5%;bottom:8%;height:14%;display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:2%}
 .timer-segments i{background:#ffffff20;border-radius:2px}.timer-segments i.filled{background:var(--accent)}
 .presentation .broadcast-timer.expired{
+  --timer-text-baseline:-1px;
   background:#b91c1c;
   border-color:#fecaca;
   color:#fff;
@@ -51,7 +53,6 @@
   line-height:1.1;
   white-space:normal;
   text-wrap:balance;
-  transform:translateY(-1px);
 }
 .presentation .broadcast-timer.expired::after{content:none}
 @media(prefers-reduced-motion:reduce){.timer-progress-track i{transition:none}}

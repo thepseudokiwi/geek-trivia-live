@@ -16,6 +16,8 @@ export function QuestionTimer({remainingMs,durationMs,status,position,config}:Pr
     width:renderedWidth,
     height:`calc(${size*height} * var(--timer-unit) * var(--content-scale,1))`,
     '--timer-font-size':fontSize,
+    '--timer-text-offset-x':config?.timer.textOffsetX??0,
+    '--timer-text-offset-y':config?.timer.textOffsetY??0,
   }as CSSProperties;
   return <output style={style} role="timer" aria-live="off" aria-label={expired?"Time's up":`${Math.ceil(remainingMs/1000)} seconds remaining`}
     data-timer-style={variant} className={`broadcast-timer timer-style-${variant} ${expired?'expired':status}`}>
