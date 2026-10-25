@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {mkdir} from 'node:fs/promises';
-import {chromium} from '@playwright/test';
+import {chromium,expect} from '@playwright/test';
 import {defaultThemeConfig} from '../shared/themeDesigner.ts';
 
 // All API calls are isolated fixtures, including save/publish. Never modifies
@@ -57,6 +57,22 @@ try{
  await textSize.fill('64');
  const largeFont=await page.locator('.broadcast-timer-value').evaluate(el=>parseFloat(getComputedStyle(el).fontSize));
  assert(largeFont>smallFont*1.5,'Text size must change the actual rendered font');
+ const xOffset=page.getByLabel('Timer text horizontal offset',{exact:true}),yOffset=page.getByLabel('Timer text vertical offset',{exact:true});
+ const originalFrame=await page.locator('.broadcast-timer').boundingBox();
+ await xOffset.fill('12.5');await yOffset.fill('-7');
+ await expect(page.locator('.broadcast-timer-value')).toHaveCSS('transform','matrix(1, 0, 0, 1, 12.5, -11)');
+ const translation=await page.locator('.broadcast-timer-value').evaluate(el=>{const matrix=new DOMMatrixReadOnly(getComputedStyle(el).transform);return{x:matrix.m41,y:matrix.m42}});
+ assert(Math.abs(translation.x-12.5)<.01&&Math.abs(translation.y+11)<.01,'Text must move independently in both axes');
+ const shiftedFrame=await page.locator('.broadcast-timer').boundingBox();
+ for(const key of ['x','y','width','height'])assert(Math.abs(originalFrame[key]-shiftedFrame[key])<.1,'Moving text must not move or resize its frame');
+ for(const [variant,baseline] of [['digital',-4],['circular',-4],['horizontal-bar',-1],['vertical-bar',-4],['minimal',-4],['segmented',-8]]){
+  await page.getByLabel('Timer style',{exact:true}).selectOption(variant);
+  await expect(page.locator('.broadcast-timer-value')).toHaveCSS('transform',`matrix(1, 0, 0, 1, 12.5, ${baseline-7})`);
+ }
+ await page.getByLabel('Timer style',{exact:true}).selectOption('circular');
+ await page.getByRole('button',{name:'Reset text position',exact:true}).click();
+ await expect(xOffset).toHaveValue('0');await expect(yOffset).toHaveValue('0');
+ await xOffset.fill('9');await yOffset.fill('');await yOffset.pressSequentially('-5');
  await page.locator('.designer-navigation').getByRole('button',{name:'Typography',exact:true}).click();
  assert.equal(await page.getByLabel('Timer font family',{exact:true}).inputValue(),'Georgia, serif','Both sections edit the same setting');
  await page.locator('.designer-navigation').getByRole('button',{name:'Timer',exact:true}).click();
@@ -64,11 +80,14 @@ try{
  await page.getByRole('status').filter({hasText:'Changes saved'}).waitFor();
  assert.equal(saves,1);assert.equal(theme.draft.typography.timer.fontFamily,'Georgia, serif');
  assert.equal(theme.draft.timer.style,'circular');assert.equal(theme.draft.timer.size,260);assert.equal(theme.draft.typography.timer.size,64);
+ assert.equal(theme.draft.timer.textOffsetX,9);assert.equal(theme.draft.timer.textOffsetY,-5);
  await page.getByRole('button',{name:'Publish',exact:true}).click();
  await page.getByRole('status').filter({hasText:'Published.'}).waitFor();
  assert.equal(publishes,1);assert.equal(theme.published.typography.timer.fontFamily,'Georgia, serif');
  await page.getByLabel('Sample data').selectOption('timer-expired');
  assert.match(await page.locator('.broadcast-timer.expired .broadcast-timer-value').evaluate(el=>getComputedStyle(el).fontFamily),/Georgia/);
+ const expiredTranslation=await page.locator('.broadcast-timer-value').evaluate(el=>{const matrix=new DOMMatrixReadOnly(getComputedStyle(el).transform);return{x:matrix.m41,y:matrix.m42}});
+ assert(Math.abs(expiredTranslation.x-9)<.01&&Math.abs(expiredTranslation.y+6)<.01,'Offsets also apply to TIME\'S UP');
  await mkdir('.local/timer-font-designer',{recursive:true});
  await page.screenshot({path:'.local/timer-font-designer/timer-font-control.jpg'});
  await page.reload();
@@ -77,6 +96,7 @@ try{
  assert.equal(await page.getByLabel('Timer style',{exact:true}).inputValue(),'circular');
  assert.equal(await page.getByLabel('Timer size',{exact:true}).inputValue(),'260');
  assert.equal(await page.getByLabel('Timer text size',{exact:true}).inputValue(),'64');
+ assert.equal(await xOffset.inputValue(),'9');assert.equal(await yOffset.inputValue(),'-5');
  assert.deepEqual(errors,[]);
- console.log(JSON.stringify({timerFontSelector:'passed',styles:6,frameSize:'passed',textSize:'passed',preview:'passed',typographySync:'passed',saves,publishes,reload:'passed',errors}));
+ console.log(JSON.stringify({timerFontSelector:'passed',styles:6,frameSize:'passed',textSize:'passed',textPosition:'passed',resetPosition:'passed',expiryPosition:'passed',preview:'passed',typographySync:'passed',saves,publishes,reload:'passed',errors}));
 }finally{await browser.close()}

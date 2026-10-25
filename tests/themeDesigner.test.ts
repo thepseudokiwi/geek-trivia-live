@@ -74,6 +74,7 @@ describe('Theme Designer drafts and publishing',()=>{
     const copy=themes.duplicateTheme('nerd-wars-classic','Timer Font Test');
     const draft=structuredClone(copy.draft),questionFont=draft.typography.question.fontFamily;
     draft.typography.timer.fontFamily='Georgia, serif';
+    draft.timer.textOffsetX=12.5;draft.timer.textOffsetY=-7;
     themes.saveThemeDraft(copy.id,draft);
     expect(themes.getDesignerTheme(copy.id).draft.typography.timer.fontFamily).toBe('Georgia, serif');
     expect(themes.getDesignerTheme(copy.id).published.typography.timer.fontFamily).toBe(copy.published.typography.timer.fontFamily);
@@ -81,7 +82,9 @@ describe('Theme Designer drafts and publishing',()=>{
     const tokens=themes.themeTokensFromConfig(copy.id,published.published);
     expect(themeCssVariables(tokens.designer!)['--font-timer']).toBe('Georgia, serif');
     expect(tokens.designer!.typography.question.fontFamily).toBe(questionFont);
+    expect(tokens.designer!.timer).toMatchObject({textOffsetX:12.5,textOffsetY:-7});
     expect(themes.importTheme(themes.exportTheme(copy.id)).draft.typography.timer.fontFamily).toBe('Georgia, serif');
+    expect(themes.importTheme(themes.exportTheme(copy.id)).draft.timer).toMatchObject({textOffsetX:12.5,textOffsetY:-7});
   });
 
   it('exports, inspects, and imports compatible JSON',()=>{
