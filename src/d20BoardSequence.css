@@ -55,7 +55,8 @@
 .d20-critical-popup>strong{font:1000 clamp(2rem,5.6vw,6rem) var(--font-display);line-height:1;letter-spacing:.025em;color:#fde047;text-shadow:0 0 1.8rem #f59e0b99}
 .d20-critical-popup>p{font:700 clamp(.75rem,1.35vw,1.55rem) var(--font-body);margin:.25rem 0;line-height:1.2}
 .d20-critical-award{padding:.25em .9em;border-radius:999px;background:#fde047;color:#241139;font:900 clamp(.9rem,1.7vw,1.8rem) var(--font-heading)}
-.d20-board-roll.natural-20.landed>.d20-three{animation:none;filter:none}
+.d20-board-roll.natural-20.landed>.d20-three{filter:none}
+.d20-board-roll.natural-20.landed:not(.d20-leads-to-tile-flip)>.d20-three{animation:none}
 .presentation:has(>.d20-board-roll:not(.revealed)) .natural20-highlight-board{visibility:hidden}
 .presentation:has(>.d20-board-roll:not(.revealed)) .audience-square.active{outline:none;transform:none}
 @keyframes n20-popup-arrive{from{opacity:0;transform:translate(-50%,1.5rem) scale(.65)}to{opacity:1;transform:translate(-50%,0) scale(1)}}

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { parseUtcTimestamp, utcTimestampIso } from '../shared/timestamps.js';
+import { questionSelectorHoldMs } from '../shared/d20RevealTiming.js';
 import type {
   D20Effect,
   D20Settings,
@@ -422,7 +423,10 @@ function project(
     stealEnabled: Boolean(row.steal_enabled),
     rolledAt: utcTimestampIso(row.created_at),
     serverNow: now(),
-    animationDurationMs: settings.animationDurationMs,
+    // Match the reveal schedule even if a host edits the duration mid-roll.
+    animationDurationMs: row.mode === 'question_selector'
+      ? JSON.parse(row.config_snapshot_json || '{}').animationDurationMs ?? settings.animationDurationMs
+      : settings.animationDurationMs,
     resultDisplayDurationMs: settings.resultDisplayDurationMs,
     autoReturn: settings.autoReturn,
     theme: settings.theme,
@@ -805,7 +809,7 @@ export function revealD20SelectedQuestion(episodeId:string,rollId:string){
 export function scheduleD20QuestionReveal(episodeId:string,rollId:string,onReveal:()=>void){
   const row:any=rollRow(rollId);
   if(!row||row.mode!=="question_selector")return;
-  const config=JSON.parse(row.config_snapshot_json||"{}"),elapsed=Math.max(0,Date.now()-parseUtcTimestamp(row.created_at)),delay=Math.max(0,Number(config.animationDurationMs??0)+5000-elapsed);
+  const config=JSON.parse(row.config_snapshot_json||"{}"),elapsed=Math.max(0,Date.now()-parseUtcTimestamp(row.created_at)),delay=Math.max(0,Number(config.animationDurationMs??0)+questionSelectorHoldMs-elapsed);
   const timer=setTimeout(()=>{try{if(revealD20SelectedQuestion(episodeId,rollId))onReveal()}catch(error){console.error("Unable to reveal D20-selected question",error)}},delay);
   timer.unref();
 }
