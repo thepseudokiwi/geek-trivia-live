@@ -1,0 +1,71 @@
+.xp-flip-slot {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.audience-board article:has(> .xp-flip-slot) { position: relative; z-index: 1; }
+
+.d20-board-roll.d20-leads-to-tile-flip > :is(.d20-three, .d20-webgl-fallback) {
+  animation: xp-tile-clear-die 160ms calc(var(--xp-flip-delay) - 160ms) ease-out forwards;
+}
+
+.xp-flip-slot > .audience-square {
+  animation: xp-tile-release var(--xp-flip-duration) var(--xp-flip-delay) linear forwards;
+}
+
+.xp-flip-card {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transform-style: preserve-3d;
+  z-index: 3;
+  animation: xp-tile-flight var(--xp-flip-duration) var(--xp-flip-delay) ease-in-out forwards;
+}
+
+.xp-flip-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, #f5fbff);
+  border-radius: var(--board-cell-radius, var(--radius));
+  backface-visibility: hidden;
+  background:
+    linear-gradient(135deg, #fff5, #fff1 35%, #c4edff42 49%, #fff0 58%),
+    color-mix(in srgb, var(--surface) 72%, transparent);
+  box-shadow: inset 0 1px 0 #fffc, inset 0 -2px 0 #abddff77, 0 .55em 1.2em #0008,
+    0 0 .75em color-mix(in srgb, var(--accent) 35%, transparent);
+  color: #f6fcff;
+  text-shadow: 0 2px 5px #061222;
+  font: 800 clamp(1rem, 2.55vw, 2.85rem)/1 var(--font-xp, var(--font-score));
+}
+
+.xp-flip-front small { font-size: .35em; }
+.xp-flip-back { transform: rotateY(180deg); font-size: clamp(.7rem, 1.5vw, 1.65rem); }
+.xp-flip-back > span { color: var(--accent); }
+.xp-flip-back > strong { font-size: .65em; text-transform: uppercase; letter-spacing: .1em; }
+
+@keyframes xp-tile-clear-die { to { opacity: 0; } }
+@keyframes xp-tile-release { 0% { opacity: 1; } 13%, 100% { opacity: 0; } }
+@keyframes xp-tile-flight {
+  0% { opacity: 0; transform: perspective(850px) scale(1.035); }
+  13% { opacity: 1; transform: perspective(850px) scale(1.035); }
+  36% { opacity: 1; transform: perspective(850px) translateY(-28%) translateZ(38px) rotateX(8deg) rotateY(29deg); }
+  66% { transform: perspective(850px) translateY(-22%) translateZ(38px) rotateX(6deg) rotateY(155deg); }
+  82% { transform: perspective(850px) rotateY(180deg); }
+  89% { transform: perspective(850px) scale(1.025) rotateY(180deg); }
+  96%, 100% { opacity: 1; transform: perspective(850px) rotateY(180deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xp-flip-slot > .audience-square { animation: none; }
+  .xp-flip-card { display: none; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .xp-flip-face { background-color: var(--surface); }
+}

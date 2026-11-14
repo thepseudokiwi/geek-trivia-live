@@ -2,13 +2,15 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {readHostFraming} from '../../shared/hostFraming';
 function hostWindowStyle(url:string):CSSProperties {const frame=readHostFraming(url);return {'--host-scale':(frame.scale??100)/100,'--host-inset-x':`${frame.insetX}%`,'--host-inset-y':`${frame.insetY}%`} as CSSProperties}
 import { themeCssVariables, type ThemeConfig, type ThemePosition } from '../../shared/themeDesigner';
-import type { PresentationLayout, PresentationScene, PublicLiveState, PublicPresentationState } from '../../shared/types';
+import type { PresentationLayout, PresentationScene, PublicD20State, PublicLiveState, PublicPresentationState } from '../../shared/types';
 import { D20Presentation } from './D20Presentation';
 import { QuestionTimer } from './QuestionTimer';
 import { createRollClock } from '../d20/timing';
+import { xpTileFlipMs, xpTileFlipStartMs } from '../../shared/d20RevealTiming';
 import { CategoryIcon } from './CategoryIcon';
 import { glassVariables } from '../../shared/themeGlass';
 import '../glass.css';
+import '../xpTileFlip.css';
 import { ThemeBackground } from './ThemeBackground';
 import { VdoFeed } from './VdoFeed';
 
@@ -16,19 +18,60 @@ const positionStyle=(position?:ThemePosition):CSSProperties|undefined=>position?
 const selectedPosition=(config:ThemeConfig|undefined,scene:PresentationScene,layout:PresentationLayout,key:string)=>config?.scenes[scene]?.positions[key]??config?.layouts[layout]?.positions[key];
 export function themeVariables(p:PublicPresentationState,reduced=false):CSSProperties{const titleSafe=Number.isFinite(p.safeArea?.titleSafePercent)?p.safeArea.titleSafePercent:10,actionSafe=Number.isFinite(p.safeArea?.actionSafePercent)?p.safeArea.actionSafePercent:5,base={'--primary':p.theme.colors.primary,'--secondary':p.theme.colors.secondary,'--background':p.theme.colors.background,'--surface':p.theme.colors.surface,'--accent':p.theme.colors.accent,'--text':p.theme.colors.text,'--muted':p.theme.colors.muted,'--success':p.theme.colors.success,'--warning':p.theme.colors.warning,'--error':p.theme.colors.error,'--font-display':p.theme.fonts.display,'--font-heading':p.theme.fonts.heading,'--font-body':p.theme.fonts.body,'--font-show-title':p.theme.fonts.display,'--font-scene-title':p.theme.fonts.heading,'--font-category':p.theme.fonts.heading,'--font-xp':p.theme.fonts.score,'--font-answer':p.theme.fonts.display,'--font-score':p.theme.fonts.score,'--font-participant':p.theme.fonts.body,'--font-timer':p.theme.fonts.timer,'--font-question':p.theme.fonts.question,'--font-lower-third':p.theme.fonts.heading,'--radius':p.theme.shape.radius,'--transition-ms':`${reduced||p.animationsDisabled?0:p.transition.durationMs}ms`,'--title-safe':`${titleSafe}%`,'--action-safe':`${actionSafe}%`}as CSSProperties;return{...base,...(p.theme.designer?themeCssVariables(p.theme.designer):{})}as CSSProperties}
 function Scores({state,compact=false}:{state:PublicLiveState;compact?:boolean}){const top=state.participants[0]?.score;return <ol className={compact?'score-bug':'standings'}>{state.participants.map((participant,index)=><li key={participant.displayName} className={participant.score===top?'leader':''}><span>{participant.placement??index+1}. {participant.displayName}{participant.score===top&&<em> leader</em>}</span><strong>{participant.score} XP</strong></li>)}</ol>}
-function Board({state,usedText,className='',highlight}:{state:PublicLiveState;usedText?:string;className?:string;highlight?:{category:string;value:number}|null}){const categories=state.board.slice(0,4);return <section className={`audience-board categories-${categories.length} ${className}`}>{categories.map((category,index)=><article key={category.name} style={{'--category-index':index}as CSSProperties}><h2 title={category.name}><CategoryIcon category={category.name}/><span>{category.name}</span></h2>{category.squares.map(question=>{const lit=highlight?.category===category.name&&highlight.value===question.value;return <div className={`audience-square state-${question.status} ${question.active?'active':''} ${lit?'natural20-selected':''}`} key={question.key}>{['completed','skipped'].includes(question.status)?<span>{usedText??question.status}</span>:<strong>{question.value}</strong>}</div>})}</article>)}</section>}
+type BoardSelection = { category: string; value: number };
+function Board({state,usedText,className='',highlight,flip}:{state:PublicLiveState;usedText?:string;className?:string;highlight?:BoardSelection|null;flip?:BoardSelection|null}) {
+ const categories=state.board.slice(0,4);
+ return <section className={`audience-board categories-${categories.length} ${className}`}>
+  {categories.map((category,index)=><article key={category.name} style={{'--category-index':index} as CSSProperties}>
+   <h2 title={category.name}><CategoryIcon category={category.name}/><span>{category.name}</span></h2>
+   {category.squares.map(question=>{
+    const lit=highlight?.category===category.name&&highlight.value===question.value;
+    const selected=flip?.category===category.name&&flip.value===question.value;
+    const tile=<div className={`audience-square state-${question.status} ${question.active?'active':''} ${lit?'natural20-selected':''}`} key={question.key}>
+     {['completed','skipped'].includes(question.status)?<span>{usedText??question.status}</span>:<strong>{question.value}</strong>}
+    </div>;
+    if(!selected)return tile;
+    return <div key={question.key} className="xp-flip-slot">
+     {tile}
+     <div className="xp-flip-card" aria-hidden="true">
+      <div className="xp-flip-face xp-flip-front"><strong>{question.value} <small>XP</small></strong></div>
+      <div className="xp-flip-face xp-flip-back"><span>✦</span><strong>Question</strong></div>
+     </div>
+    </div>;
+   })}
+  </article>)}
+ </section>;
+}
+
+function D20Board({state,roll,config,layout,reduceMotion}:{state:PublicLiveState;roll:PublicD20State;config?:ThemeConfig;layout:PresentationLayout;reduceMotion:boolean}) {
+ // Use one offset for this roll so periodic snapshots don't restart the CSS animation.
+ const [elapsed]=useState(()=>createRollClock(roll.rolledAt,roll.animationDurationMs,roll.serverNow)());
+ const flip=roll.mode==='question_selector'&&!reduceMotion?roll.selectedSquare:null;
+ const style={
+  '--selection-delay':`${roll.animationDurationMs-elapsed}ms`,
+  '--xp-flip-delay':`${xpTileFlipStartMs(roll.animationDurationMs)-elapsed}ms`,
+  '--xp-flip-duration':`${xpTileFlipMs}ms`,
+ } as CSSProperties;
+ return <div className={`d20-tray-board ${roll.result===20?'natural20-sequence':''}`} style={style}>
+  <div className="board-position" style={positionStyle(selectedPosition(config,'board',layout,'board'))}>
+   <Board state={state} usedText={config?.board.usedText} flip={flip}/>
+   {roll.result===20&&roll.selectedSquare&&<Board state={state} usedText={config?.board.usedText} className="natural20-highlight-board" highlight={roll.selectedSquare}/>}
+  </div>
+ </div>;
+}
 
 
 export function PresentationRenderer({state,presentation=pState(state),scene=presentation.programScene,layout=presentation.layout,remainingMs=state.timer.remainingMs,connected=true,reduced=false,preview=false,showD20=true,onD20Done}:{state:PublicLiveState;presentation?:PublicPresentationState;scene?:PresentationScene;layout?:PresentationLayout;remainingMs?:number;connected?:boolean;reduced?:boolean;preview?:boolean;showD20?:boolean;onD20Done?:()=>void}){
  const p=presentation,config=p.theme.designer,displayD20=showD20&&scene==='d20'&&state.d20,allFeeds=[...new Map((state.videoFeeds??[]).map(feed=>[feed.viewUrl.trim().toLocaleLowerCase(),feed])).values()],hostFeed=allFeeds.find(feed=>feed.label.startsWith('__NERD_WARS_HOST_CAMERA__')),hostName=hostFeed?.label.slice('__NERD_WARS_HOST_CAMERA__'.length).trim(),feeds=allFeeds.filter(feed=>feed!==hostFeed),teamKeys=[...new Set(feeds.map(feed=>feed.participantId).filter(Boolean))],leftTeam=teamKeys[0],rightTeam=teamKeys[1],unassigned=feeds.filter(feed=>!feed.teamSide&&(!feed.participantId||!teamKeys.slice(0,2).includes(feed.participantId))),leftFeeds=[...feeds.filter(feed=>feed.teamSide==='left'||(!feed.teamSide&&feed.participantId===leftTeam)),...unassigned.filter((_,index)=>index%2===0)],rightFeeds=[...feeds.filter(feed=>feed.teamSide==='right'||(!feed.teamSide&&feed.participantId===rightTeam)),...unassigned.filter((_,index)=>index%2===1)],participantFor=(group:typeof feeds,fallback:number)=>state.participants.find(participant=>group.some(feed=>feed.participantName===participant.displayName))??state.participants[fallback],leftParticipant=participantFor(leftFeeds,0),rightParticipant=participantFor(rightFeeds,1);
  const pos=(key:string)=>positionStyle(selectedPosition(config,scene,layout,key));
+ const reduceMotion=reduced||p.reducedMotion||p.animationsDisabled;
  return <div data-glass={config?.glass?.style??'off'} style={{...themeVariables(p,reduced),...glassVariables(config?.glass)}} className={`audience presentation theme-${p.theme.id} layout-${layout} scene-${scene} transition-${reduced||p.animationsDisabled?p.transition.reducedMotionFallback:p.transition.kind} ${reduced?'reduced-motion':''} ${preview?'theme-preview-canvas':''}`} aria-live="polite">
   {p.theme.fontFaces?.length?<style>{p.theme.fontFaces.map(face=>`@font-face{font-family:${JSON.stringify(face.family)};src:url(${JSON.stringify(face.url)}) format(${JSON.stringify(face.format)});font-display:swap}`).join('\n')}</style>:null}
   <ThemeBackground config={config} scene={scene} layout={layout}/>
   <header className="program-brand"><div>{!p.profile.logoUrl&&<h1>{p.profile.showTitle}</h1>}</div><span className="audience-connection">{preview?'PREVIEW':connected?'LIVE':'Reconnecting…'}</span></header>
   {p.profile.logoUrl&&<img className="program-theme-logo" style={pos('logo')} src={p.profile.logoUrl} alt={`${p.profile.name} logo`}/>}
   <main className="program-stage" key={`${scene}-${p.transition.startedAt??''}`}>
-   {displayD20?<div className={`d20-tray-board ${state.d20!.result===20?'natural20-sequence':''}`} style={{'--selection-delay':`${state.d20!.animationDurationMs-createRollClock(state.d20!.rolledAt,state.d20!.animationDurationMs,state.d20!.serverNow)()}ms`} as CSSProperties}><div className="board-position" style={positionStyle(selectedPosition(config,'board',layout,'board'))}><Board state={state} usedText={config?.board.usedText}/>{state.d20!.result===20&&state.d20!.selectedSquare&&<Board state={state} usedText={config?.board.usedText} className="natural20-highlight-board" highlight={state.d20!.selectedSquare}/>}</div></div>:<>
+   {displayD20?<D20Board key={displayD20.rolledAt} state={state} roll={displayD20} config={config} layout={layout} reduceMotion={reduceMotion}/>:<>
     {scene==='standby'&&<section className="hero-scene"><p className="eyebrow">{p.profile.subtitle}</p><h2>Stand by</h2><p>The show begins soon</p></section>}
     {scene==='intro'&&<section className="hero-scene intro-scene"><p className="eyebrow">Live game show</p>{!p.profile.logoUrl&&<h2>{p.profile.showTitle}</h2>}<p>{state.title}</p></section>}
     {scene==='board'&&<div className="board-position" style={pos('board')}><Board state={state} usedText={config?.board.usedText}/></div>}
@@ -42,7 +85,7 @@ export function PresentationRenderer({state,presentation=pState(state),scene=pre
     {scene==='custom-message'&&<section className="hero-scene"><h2>{p.customMessage??'Stay tuned'}</h2></section>}
    </>}
   </main>
-  {displayD20&&state.d20?<D20Presentation space="board" roll={{...state.d20,soundEnabled:state.d20.soundEnabled&&!p.audio.masterMuted&&!p.audio.reducedAudio}} reducedMotion={reduced||p.reducedMotion||p.animationsDisabled} onDone={onD20Done}/>:((scene==='board'||scene==='d20')&&<aside className="d20-corner-tray idle-tray"><div className="d20-ready-state"><span>D20</span><strong>{state.d20?.result??'READY'}</strong><small>{state.d20?'Last roll':'Waiting for the controlling team'}</small></div></aside>)}
+  {displayD20?<D20Presentation space="board" roll={{...displayD20,soundEnabled:displayD20.soundEnabled&&!p.audio.masterMuted&&!p.audio.reducedAudio}} reducedMotion={reduceMotion} onDone={onD20Done}/>:((scene==='board'||scene==='d20')&&<aside className="d20-corner-tray idle-tray"><div className="d20-ready-state"><span>D20</span><strong>{state.d20?.result??'READY'}</strong><small>{state.d20?'Last roll':'Waiting for the controlling team'}</small></div></aside>)}
   {(layout==='scorebug'||layout==='overlay')&&<aside style={pos('scoreboard')} className="overlay-score"><Scores state={state} compact/><output>{Math.ceil(remainingMs/1000)}s</output></aside>}
   {layout==='lowerthird'&&<aside style={pos('lowerThird')} className="lower-third"><strong>{p.customMessage??state.question?.category??(!p.profile.logoUrl?p.profile.showTitle:p.profile.subtitle)}</strong><span>{p.profile.subtitle}</span></aside>}
   {p.graphics.map(graphic=><aside className={`broadcast-graphic graphic-${graphic.type}`} key={graphic.id}>{graphic.text}</aside>)}

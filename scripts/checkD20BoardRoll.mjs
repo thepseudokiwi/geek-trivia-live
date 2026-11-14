@@ -135,6 +135,15 @@ try {
   assert.equal(await page.locator('.d20-critical-popup').count(), 0, 'Refreshing an old 20 must not replay the celebration');
   assert.equal(await page.locator('.d20-corner-number').textContent(), '20');
 
+  sendRoll(20, 2200, 1600);
+  await page.locator('.d20-critical-popup').waitFor();
+  const flipCard = page.locator('.xp-flip-card');
+  assert.equal(await flipCard.evaluate(el => getComputedStyle(el).opacity), '0', 'Celebrate the 20 before lifting the tile');
+  await page.waitForFunction(() => Number(getComputedStyle(document.querySelector('.xp-flip-card')).opacity) > .95);
+  assert.equal(await page.locator('.d20-critical-popup').count(), 0, 'The celebration must clear before the tile flips');
+  assert.equal(await page.locator('.d20-corner-number').textContent(), '20', 'The result stays in the corner during the flip');
+  report.push({ natural20TileFlip: 'passed' });
+
   await page.emulateMedia({ reducedMotion: 'reduce' });
   sendRoll(20);
   await page.locator('.d20-reduced-motion').waitFor();

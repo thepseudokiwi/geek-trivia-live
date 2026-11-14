@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { dieRollSound } from "../d20/audio";
 import { createRollClock, resultRevealDelayMs } from "../d20/timing";
 import type { PublicD20State } from "../../shared/types";
+import { questionSelectorHoldMs, xpTileFlipStartMs } from '../../shared/d20RevealTiming';
 const D20Three=lazy(()=>import('./D20Three').then(module=>({default:module.D20Three})));
 type Props = { roll: PublicD20State; onDone?:()=>void; reducedMotion?:boolean; space?:'tray'|'board' };
 export function D20Presentation(props: Props) { return <D20Roll key={props.roll.rolledAt} {...props}/>; }
@@ -14,6 +15,10 @@ function D20Roll({ roll,onDone,reducedMotion=false,space='tray' }: Props) {
   const landing = useRef(landedAt);
   const audio = useRef<ReturnType<typeof dieRollSound>>(undefined);
   const reduced=reducedMotion||window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const hasTileFlip=space==='board'&&roll.mode==='question_selector'&&Boolean(roll.selectedSquare)&&!reduced;
+  const flipStart=xpTileFlipStartMs(roll.animationDurationMs);
+  const celebrationEnd=hasTileFlip?flipStart:roll.animationDurationMs+questionSelectorHoldMs;
+  const [flipDelay]=useState(()=>flipStart-elapsed);
   const confirmLanding = useCallback((at:number) => {
     if (landing.current !== null) return;
     landing.current = at;
@@ -49,18 +54,19 @@ function D20Roll({ roll,onDone,reducedMotion=false,space='tray' }: Props) {
   }, [landedAt]);
   useEffect(()=>{
     if (!revealed || roll.result !== 20) { setCelebrating(false); return; }
-    const remaining = roll.animationDurationMs + 5000 - rollElapsed();
+    const remaining = celebrationEnd - rollElapsed();
     setCelebrating(remaining > 0);
     if (remaining <= 0) return;
     const timer = setTimeout(() => setCelebrating(false), remaining);
     return () => clearTimeout(timer);
-  }, [rollElapsed, revealed, roll.result, roll.rolledAt, roll.animationDurationMs]);
+  }, [rollElapsed, revealed, roll.result, celebrationEnd]);
   useEffect(()=>{
-    if(!roll.autoReturn||!hasDone)return;
+    // The server switches scenes for selectors; keep the board visible until then.
+    if(roll.mode==='question_selector'||!roll.autoReturn||!hasDone)return;
     const total=roll.animationDurationMs+roll.resultDisplayDurationMs;
     const timer=setTimeout(()=>done.current?.(),Math.max(0,total-rollElapsed()));
     return()=>clearTimeout(timer);
-  },[rollElapsed,roll.rolledAt,roll.animationDurationMs,roll.resultDisplayDurationMs,roll.autoReturn,hasDone]);
+  },[rollElapsed,roll.mode,roll.animationDurationMs,roll.resultDisplayDurationMs,roll.autoReturn,hasDone]);
   const details = <>
     <h2>{revealed ? roll.effectName : landed ? 'Lighting up the number…' : 'Rolling D20…'}</h2>
     {revealed && <>
@@ -73,10 +79,11 @@ function D20Roll({ roll,onDone,reducedMotion=false,space='tray' }: Props) {
   </>;
   return (
     <main
-      className={`d20-public ${space==='board'?'d20-board-roll':''} ${reduced?'d20-reduced-motion':''} theme-${roll.theme} ${landed ? "landed" : "rolling"} ${revealed?'revealed':''} natural-${roll.result}`}
+      className={`d20-public ${space==='board'?'d20-board-roll':''} ${hasTileFlip?'d20-leads-to-tile-flip':''} ${reduced?'d20-reduced-motion':''} theme-${roll.theme} ${landed ? "landed" : "rolling"} ${revealed?'revealed':''} natural-${roll.result}`}
       style={
         {
           "--roll-duration": `${roll.animationDurationMs}ms`,
+          "--xp-flip-delay": `${flipDelay}ms`,
           "--d20-glow-delay": `${-Math.max(0,landedAt === null ? 0 : Date.now()-landedAt)}ms`,
         } as React.CSSProperties
       }
